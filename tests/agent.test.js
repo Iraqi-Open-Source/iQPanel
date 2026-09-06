@@ -10,7 +10,7 @@ process.env.PANEL_DATA_ROOT = dataRoot;
 process.env.PANEL_SITES_ROOT = path.join(dataRoot, 'sites');
 process.env.PANEL_SECRET_KEY = 'agent-test-secret';
 
-const agent = require('../agent-ops');
+const agent = require('../ops');
 
 test('writes MySQL grant SQL for a new database and user', async () => {
   const result = await agent.provisionDatabase({

@@ -1,0 +1,13 @@
+<VirtualHost *:{{listen_port}}>
+    ServerName {{server_name}}
+    DocumentRoot {{site_root}}/dist
+    <Directory "{{site_root}}/dist">
+        AllowOverride None
+        Require all granted
+        Options FollowSymLinks
+        DirectoryIndex index.html
+        FallbackResource /index.html
+    </Directory>
+    ErrorLog ${APACHE_LOG_DIR}/{{slug}}-error.log
+    CustomLog ${APACHE_LOG_DIR}/{{slug}}-access.log combined
+</VirtualHost>

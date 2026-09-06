@@ -14,8 +14,9 @@ function sql(value) {
   return `'${String(value).replaceAll("'", "''")}'`;
 }
 
-function run(statement) {
-  execFileSync('sqlite3', ['-batch', '-cmd', 'PRAGMA foreign_keys=ON;', dbPath, statement], { encoding: 'utf8' });
+function run(statement, { foreignKeys = true } = {}) {
+  const pragma = foreignKeys ? 'PRAGMA foreign_keys=ON;' : 'PRAGMA foreign_keys=OFF;';
+  execFileSync('sqlite3', ['-batch', '-cmd', pragma, dbPath, statement], { encoding: 'utf8' });
 }
 
 function rows(statement) {
@@ -28,12 +29,73 @@ function ensureColumn(table, column, definition) {
   if (!columns.includes(column)) run(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
 }
 
+function tableSql(name) {
+  const row = rows(`SELECT sql FROM sqlite_master WHERE type='table' AND name=${sql(name)}`)[0];
+  return row?.sql || '';
+}
+
+function recreateTable(name, createSql) {
+  const columns = rows(`PRAGMA table_info(${name})`).map((item) => item.name);
+  if (!columns.length) {
+    run(createSql);
+    return;
+  }
+  const tmp = `${name}__migrate`;
+  run(`DROP TABLE IF EXISTS ${tmp}`, { foreignKeys: false });
+  run(createSql.replace(`CREATE TABLE IF NOT EXISTS ${name}`, `CREATE TABLE ${tmp}`), { foreignKeys: false });
+  const nextColumns = rows(`PRAGMA table_info(${tmp})`).map((item) => item.name);
+  const shared = columns.filter((column) => nextColumns.includes(column));
+  if (shared.length) {
+    run(`INSERT INTO ${tmp} (${shared.join(',')}) SELECT ${shared.join(',')} FROM ${name}`, { foreignKeys: false });
+  }
+  run(`DROP TABLE ${name}`, { foreignKeys: false });
+  run(`ALTER TABLE ${tmp} RENAME TO ${name}`, { foreignKeys: false });
+}
+
 run(fs.readFileSync(schemaPath, 'utf8'));
+
+if (tableSql('sites') && !tableSql('sites').includes("'docker'")) {
+  recreateTable('sites', `CREATE TABLE IF NOT EXISTS sites (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    slug TEXT NOT NULL UNIQUE,
+    type TEXT NOT NULL CHECK(type IN ('php', 'node', 'python', 'static', 'docker')),
+    repo_url TEXT,
+    deploy_key_path TEXT,
+    deploy_key_public TEXT,
+    domain TEXT,
+    port INTEGER,
+    webserver TEXT NOT NULL DEFAULT 'nginx',
+    ssl_status TEXT NOT NULL DEFAULT 'none',
+    runtime_version TEXT,
+    status TEXT NOT NULL DEFAULT 'online',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`);
+}
+
+if (tableSql('databases') && !tableSql('databases').includes("'postgres'")) {
+  recreateTable('databases', `CREATE TABLE IF NOT EXISTS databases (
+    id TEXT PRIMARY KEY,
+    site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+    engine TEXT NOT NULL CHECK(engine IN ('mysql', 'mariadb', 'postgres')),
+    db_name TEXT NOT NULL UNIQUE,
+    db_user TEXT NOT NULL,
+    host TEXT NOT NULL DEFAULT 'localhost',
+    created_at TEXT NOT NULL
+  )`);
+}
+
 ensureColumn('databases', 'password_ciphertext', "TEXT NOT NULL DEFAULT ''");
 ensureColumn('databases', 'granted', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('sites', 'backup_keep_count', 'INTEGER NOT NULL DEFAULT 5');
 ensureColumn('sites', 'backup_keep_days', 'INTEGER NOT NULL DEFAULT 14');
 ensureColumn('sites', 'app_port', 'INTEGER');
 ensureColumn('sites', 'config_status', "TEXT NOT NULL DEFAULT 'pending'");
+ensureColumn('sites', 'server_id', "TEXT NOT NULL DEFAULT 'local'");
+ensureColumn('sites', 'node_version', 'TEXT');
+ensureColumn('sites', 'python_version', 'TEXT');
+ensureColumn('sites', 'public_access', 'INTEGER NOT NULL DEFAULT 0');
+ensureColumn('backups', 'details', "TEXT NOT NULL DEFAULT ''");
 
 module.exports = { root, dbPath, sql, run, rows };

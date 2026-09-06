@@ -33,6 +33,26 @@ async function applyNginxConfig(site, { writeNginxConfig, command }) {
   }
 }
 
+async function applyApacheConfig(site, { writeApacheConfig, command }) {
+  const generated = writeApacheConfig(site);
+  if (!paths.applySystem) return { applied: false, path: generated };
+  const available = paths.apacheAvailable(site.slug);
+  const enabled = paths.apacheEnabled(site.slug);
+  copyFile(generated, available);
+  let enabledCreated = false;
+  try {
+    symlinkFile(available, enabled);
+    enabledCreated = true;
+    await command('apache2ctl', ['configtest']);
+    await command('systemctl', ['reload', 'apache2']);
+    return { applied: true, path: available, enabled };
+  } catch (error) {
+    if (enabledCreated && fs.existsSync(enabled)) fs.unlinkSync(enabled);
+    if (fs.existsSync(available)) fs.unlinkSync(available);
+    throw new Error(`Apache apply failed: ${error.message}`);
+  }
+}
+
 async function applyPhpPool(site, { writePhpPool, command }) {
   const { filePath, version } = writePhpPool(site);
   if (!paths.applySystem) return { applied: false, path: filePath, version };
@@ -79,6 +99,13 @@ function removeNginxConfig(slug, assertSlug) {
   }
 }
 
+function removeApacheConfig(slug, assertSlug) {
+  assertSlug(slug);
+  for (const target of [paths.apacheGenerated(slug), paths.apacheAvailable(slug), paths.apacheEnabled(slug)]) {
+    if (fs.existsSync(target)) fs.unlinkSync(target);
+  }
+}
+
 function removePhpPool(slug, version, assertSlug) {
   assertSlug(slug);
   for (const target of [paths.phpPoolGenerated(slug), paths.phpPoolSystem(slug, version)]) {
@@ -108,10 +135,12 @@ async function removeSystemdUnits(slug, assertSlug, command) {
 
 module.exports = {
   applyNginxConfig,
+  applyApacheConfig,
   applyPhpPool,
   applySystemdUnit,
   controlSystemdUnit,
   removeNginxConfig,
+  removeApacheConfig,
   removePhpPool,
   removeSystemdUnits,
 };

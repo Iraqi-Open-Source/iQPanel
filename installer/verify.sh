@@ -17,6 +17,8 @@ else
 fi
 
 "${CURL[@]}" "${BASE_URL}/api/dashboard" | grep -q '"sites"' || { echo "Dashboard missing sites"; exit 1; }
-"${CURL[@]}" "${BASE_URL}/api/sites" | grep -q '\[' || { echo "Sites endpoint failed"; exit 1; }
+"${CURL[@]}" "${BASE_URL}/api/runtimes" | grep -q '"php"' || { echo "Runtimes endpoint failed"; exit 1; }
+"${CURL[@]}" "${BASE_URL}/api/docker" | grep -q '"available"' || { echo "Docker endpoint failed"; exit 1; }
+"${CURL[@]}" "${BASE_URL}/api/servers" | grep -q 'local' || { echo "Servers endpoint failed"; exit 1; }
 
 echo "Smoke checks passed."

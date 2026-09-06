@@ -12,7 +12,7 @@ function log(action, target, details = '') {
 
 function recordBackup(siteId, result) {
   const crypto = require('node:crypto');
-  db.run(`INSERT INTO backups (id,site_id,destination,path,size,status,created_at) VALUES (${db.sql(crypto.randomUUID())},${db.sql(siteId)},'local',${db.sql(result.path)},${result.size || 0},'succeeded',${db.sql(now())})`);
+  db.run(`INSERT INTO backups (id,site_id,destination,path,size,status,created_at) VALUES (${db.sql(crypto.randomUUID())},${db.sql(siteId)},${db.sql(result.destination || 'local')},${db.sql(result.path)},${result.size || 0},'succeeded',${db.sql(now())})`);
 }
 
 const handlers = {
@@ -24,7 +24,7 @@ const handlers = {
     return result;
   },
   async backup(payload) {
-    const result = await agentClient.invoke('createBackup', payload.site, payload.databases || [], payload.retention || {});
+    const result = await agentClient.invoke('createBackup', payload.site, payload.databases || [], payload.retention || {}, { destination: payload.destination || 'local', credentials: payload.credentials || {} });
     recordBackup(payload.site.id, result);
     log('Backup completed', payload.site.name || payload.site.slug, result.path);
     return result;

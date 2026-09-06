@@ -8,6 +8,10 @@ function nginxRoot() {
   return process.env.PANEL_NGINX_ROOT || '/etc/nginx';
 }
 
+function apacheRoot() {
+  return process.env.PANEL_APACHE_ROOT || '/etc/apache2';
+}
+
 function phpFpmRoot() {
   return process.env.PANEL_PHP_FPM_ROOT || '/etc/php';
 }
@@ -30,6 +34,18 @@ function nginxAvailable(slug) {
 
 function nginxEnabled(slug) {
   return path.join(nginxRoot(), 'sites-enabled', `${slug}.conf`);
+}
+
+function apacheGenerated(slug) {
+  return path.join(generatedRoot(), 'apache', `${slug}.conf`);
+}
+
+function apacheAvailable(slug) {
+  return path.join(apacheRoot(), 'sites-available', `${slug}.conf`);
+}
+
+function apacheEnabled(slug) {
+  return path.join(apacheRoot(), 'sites-enabled', `${slug}.conf`);
 }
 
 function phpPoolGenerated(slug) {
@@ -58,6 +74,10 @@ module.exports = {
   nginxGenerated,
   nginxAvailable,
   nginxEnabled,
+  apacheRoot,
+  apacheGenerated,
+  apacheAvailable,
+  apacheEnabled,
   phpPoolGenerated,
   phpPoolSystem,
   systemdGenerated,

@@ -2,7 +2,7 @@ const net = require('node:net');
 const fs = require('node:fs');
 const crypto = require('node:crypto');
 const { execFileSync } = require('node:child_process');
-const actions = require('./agent-ops');
+const actions = require('./ops');
 
 const socketPath = process.env.PANEL_AGENT_SOCKET || '/tmp/iqpanel-agent.sock';
 const expectedToken = process.env.PANEL_AGENT_TOKEN;

@@ -6,6 +6,13 @@ const { handleData } = require('./http-data');
 const { handleSites } = require('./http-sites');
 const { handleServices } = require('./http-services');
 const { handleCron } = require('./http-cron');
+const { handleRuntimes } = require('./http-runtimes');
+const { handleDocker } = require('./http-docker');
+const { handleServers } = require('./http-servers');
+const { handleSettings } = require('./http-settings');
+const { handleTerminal } = require('./http-terminal');
+const { handleSiteCreate } = require('./http-site-create');
+const { handleSiteExtras } = require('./http-site-extras');
 
 const publicDir = path.join(publicRoot, 'public');
 const staticExtensions = new Set(['.html', '.css', '.js', '.svg', '.png', '.ico', '.woff2']);
@@ -14,9 +21,16 @@ async function handleRequest(request, response) {
   const url = new URL(request.url, `http://${request.headers.host || 'localhost'}`);
   if (await handleAuth(request, response, url.pathname)) return;
   if (url.pathname.startsWith('/api/')) {
+    if (await handleRuntimes(request, response, url.pathname)) return;
+    if (await handleDocker(request, response, url.pathname)) return;
+    if (await handleServers(request, response, url.pathname)) return;
+    if (await handleSettings(request, response, url.pathname)) return;
+    if (await handleTerminal(request, response, url.pathname)) return;
     if (await handleData(request, response, url.pathname)) return;
     if (await handleCron(request, response, url.pathname)) return;
     if (await handleServices(request, response, url.pathname)) return;
+    if (await handleSiteCreate(request, response, url.pathname)) return;
+    if (await handleSiteExtras(request, response, url.pathname)) return;
     if (await handleSites(request, response, url.pathname)) return;
     send(response, 404, { error: 'Not found' });
     return;
@@ -37,6 +51,12 @@ async function handleRequest(request, response) {
     return;
   }
   const types = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.woff2': 'font/woff2' };
+  if (path.basename(filePath) === 'index.html') {
+    const html = fs.readFileSync(filePath, 'utf8').replace('</body>', '<script src="/phase2.js"></script></body>');
+    response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+    response.end(html);
+    return;
+  }
   response.writeHead(200, { 'content-type': `${types[extension] || 'application/octet-stream'}; charset=utf-8` });
   fs.createReadStream(filePath).pipe(response);
 }

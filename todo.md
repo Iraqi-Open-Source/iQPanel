@@ -1,6 +1,6 @@
 # iQPanel Implementation Checklist
 
-Status reflects the Phase 1 completion work against `opensource-server-panel-plan.md`.
+Status reflects Phase 1 and Phase 2 work against `opensource-server-panel-plan.md`.
 
 ## Phase 1: MVP (working)
 
@@ -20,7 +20,7 @@ Status reflects the Phase 1 completion work against `opensource-server-panel-pla
 - [x] Per-site Ed25519 deploy keys and Git clone/pull jobs
 - [x] Nginx vhosts from templates (PHP, proxy, static)
 - [x] PHP-FPM pools from templates
-- [x] Apache selection rejected at API boundary (Phase 2)
+- [x] Apache vhosts from templates (PHP, proxy, static)
 - [x] `config_status` tracked per site (`generated` vs `applied`)
 
 ### Databases and backups
@@ -52,24 +52,34 @@ Status reflects the Phase 1 completion work against `opensource-server-panel-pla
 
 ### Tests
 
-- [x] 26 automated tests (`npm test`) covering API, agent, auth, queue, metrics, ports
+- [x] Automated tests (`npm test`) covering API, agent, auth, queue, metrics, ports
 
-## Phase 2 (not started)
+## Phase 2 (working)
 
-- [ ] Apache support
-- [ ] PostgreSQL support
-- [ ] Multiple PHP/Node versions
-- [ ] Docker management
-- [ ] Remote backup destinations (FTP, Telegram)
-- [ ] Web terminal
-- [ ] Certbot / UFW per-site automation
-- [ ] Multi-server agents
+- [x] Apache support (vhost templates, apply/rollback, site create)
+- [x] PostgreSQL support (grants SQL, dump, API engine)
+- [x] Multiple PHP/Node versions (`/api/runtimes`, site `runtime_version`)
+- [x] Extra systemd templates: FastAPI, Node, ASP.NET
+- [x] Docker management (`/api/docker`, compose, honest unavailable status)
+- [x] Remote backup destinations (FTP via curl, Telegram chunked uploads)
+- [x] Web terminal (`/api/terminal`, audited start/end)
+- [x] Certbot / UFW per-site automation (generated locally; applied when `PANEL_APPLY_SYSTEM=1`)
+- [x] Multi-server registry (`/api/servers` local + remote records)
+
+## Phase 3 (later)
+
+- [ ] Remote agent TCP invoke routing per registered server
+- [ ] Per-site isolated system users
+- [ ] GitHub webhooks for auto-deploy and rollback
+- [ ] Role-based access control, 2FA, full audit log UI
 
 ## Manual verification (Ubuntu VM)
 
 1. Run `sudo bash installer/install.sh` on Ubuntu 22.04 or 24.04
 2. Tunnel: `ssh -L 4173:127.0.0.1:4173 user@server`
 3. Sign in with the one-time admin password
-4. Create a PHP site, add deploy key to GitHub, clone, apply config
-5. Confirm Nginx serves the site (`curl` the assigned port or domain)
-6. Delete the site and confirm vhost/pool/unit/cron entries are removed
+4. Create a PHP or Apache site, add deploy key to GitHub, clone, apply config
+5. Confirm Nginx or Apache serves the site (`curl` the assigned port or domain)
+6. Create a PostgreSQL database and a Telegram/FTP backup destination in Settings
+7. Open the web terminal, run a harmless command, then close the session
+8. Delete the site and confirm vhost/pool/unit/cron entries are removed

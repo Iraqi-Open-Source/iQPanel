@@ -3,12 +3,14 @@ const { allocatePorts } = require('./ports');
 const queue = require('./queue');
 
 async function applySiteConfig(site) {
-  const nginx = await agentClient.invoke('applyNginxConfig', site);
+  const web = site.webserver === 'apache'
+    ? await agentClient.invoke('applyApacheConfig', site)
+    : await agentClient.invoke('applyNginxConfig', site);
   let php = null;
   if (site.type === 'php') php = await agentClient.invoke('applyPhpPool', site);
-  const status = nginx.applied || php?.applied ? 'applied' : 'generated';
+  const status = web.applied || php?.applied ? 'applied' : 'generated';
   db.run(`UPDATE sites SET config_status=${db.sql(status)}, updated_at=${db.sql(now())} WHERE id=${db.sql(site.id)}`);
-  return { nginx, php, status };
+  return { web, php, status };
 }
 
 async function handleSites(request, response, pathname) {
@@ -20,7 +22,7 @@ async function handleSites(request, response, pathname) {
     const input = await require('./http-shared').body(request);
     const repo = String(input.repo || '').trim();
     if (!/^git@[\w.-]+:[\w./-]+(?:\.git)?$/.test(repo)) throw new Error('A valid GitHub SSH URL is required');
-    if (String(input.server || '').toLowerCase() === 'apache') throw new Error('Apache support is planned for Phase 2. Use Nginx.');
+    if (String(input.server || input.webserver || '').toLowerCase() === 'apache') webserver = 'apache';
     const name = String(input.name || repo.split('/').pop().replace(/\.git$/, '')).trim();
     const slug = slugify(name);
     if (getSite(slug)) throw new Error('A site with this name already exists');
@@ -66,7 +68,7 @@ async function handleSites(request, response, pathname) {
     }
   }
 
-  const siteMatch = pathname.match(/^\/api\/sites\/([^/]+)(?:\/(deploy|backup|config|install))?$/);
+  const siteMatch = pathname.match(/^\/api\/sites\/([^/]+)(?:\/(deploy|backup|config|install|ssl|firewall))?$/);
   if (!siteMatch) return false;
   const site = getSite(siteMatch[1]);
   if (!site) { send(response, 404, { error: 'Site not found' }); return true; }

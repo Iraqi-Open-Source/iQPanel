@@ -1,6 +1,6 @@
 const net = require('node:net');
 const fs = require('node:fs');
-const agent = require('./agent-ops');
+const agent = require('./ops');
 
 function invoke(action, ...args) {
   const socketPath = process.env.PANEL_AGENT_SOCKET;

@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS sites (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   slug TEXT NOT NULL UNIQUE,
-  type TEXT NOT NULL CHECK(type IN ('php', 'node', 'python', 'static')),
+  type TEXT NOT NULL CHECK(type IN ('php', 'node', 'python', 'static', 'docker')),
   repo_url TEXT,
   deploy_key_path TEXT,
   deploy_key_public TEXT,
@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS sites (
 CREATE TABLE IF NOT EXISTS databases (
   id TEXT PRIMARY KEY,
   site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
-  engine TEXT NOT NULL CHECK(engine IN ('mysql', 'mariadb')),
+  engine TEXT NOT NULL CHECK(engine IN ('mysql', 'mariadb', 'postgres')),
   db_name TEXT NOT NULL UNIQUE,
   db_user TEXT NOT NULL,
   host TEXT NOT NULL DEFAULT 'localhost',
@@ -87,4 +87,29 @@ CREATE TABLE IF NOT EXISTS jobs (
   run_after TEXT NOT NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS servers (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  host TEXT NOT NULL,
+  port INTEGER NOT NULL DEFAULT 4174,
+  token_ciphertext TEXT NOT NULL DEFAULT '',
+  kind TEXT NOT NULL DEFAULT 'remote',
+  status TEXT NOT NULL DEFAULT 'unknown',
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS docker_containers (
+  id TEXT PRIMARY KEY,
+  site_id TEXT REFERENCES sites(id) ON DELETE SET NULL,
+  container_id TEXT NOT NULL,
+  image TEXT,
+  status TEXT NOT NULL DEFAULT 'unknown',
+  created_at TEXT NOT NULL
 );

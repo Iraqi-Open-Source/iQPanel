@@ -107,13 +107,15 @@ test('log discovery and snapshot are available for a site', async () => {
   assert.match(snapshot.text, /production.INFO/);
 });
 
-test('rejects Apache web server selection', async () => {
+test('creates an Apache site and renders an Apache vhost', async () => {
   const response = await fetch(`${base}/api/sites`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ repo: 'git@github.com:example/apache.git', name: 'Apache Site', type: 'php', server: 'Apache' }),
   });
-  assert.equal(response.status, 400);
+  assert.equal(response.status, 201);
+  const site = await response.json();
+  assert.equal(site.webserver, 'apache');
 });
 
 async function waitForJob(jobId) {

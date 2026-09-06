@@ -1,0 +1,9 @@
+<VirtualHost *:{{listen_port}}>
+    ServerName {{server_name}}
+    ProxyPreserveHost On
+    ProxyRequests Off
+    ProxyPass / http://127.0.0.1:{{upstream_port}}/
+    ProxyPassReverse / http://127.0.0.1:{{upstream_port}}/
+    ErrorLog ${APACHE_LOG_DIR}/{{slug}}-error.log
+    CustomLog ${APACHE_LOG_DIR}/{{slug}}-access.log combined
+</VirtualHost>

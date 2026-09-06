@@ -85,8 +85,9 @@ async function handleData(request, response, pathname) {
     const databaseUser = slugify(input.db_user || `${site.slug}_user`).replaceAll('-', '_');
     const secret = input.password || secrets.password();
     const mode = input.mode === 'attach' ? 'attach' : 'create';
-    const provisioned = await agentClient.invoke('provisionDatabase', { db_name: databaseName, db_user: databaseUser, password: secret, mode });
-    const database = { id: id(), site_id: site.id, engine: input.engine === 'mariadb' ? 'mariadb' : 'mysql', db_name: databaseName, db_user: databaseUser, host: 'localhost', granted: provisioned.granted ? 1 : 0, created_at: now() };
+    const engine = ['mariadb', 'postgres', 'postgresql'].includes(input.engine) ? (input.engine === 'postgresql' ? 'postgres' : input.engine) : 'mysql';
+    const provisioned = await agentClient.invoke('provisionDatabase', { db_name: databaseName, db_user: databaseUser, password: secret, mode, engine });
+    const database = { id: id(), site_id: site.id, engine, db_name: databaseName, db_user: databaseUser, host: 'localhost', granted: provisioned.granted ? 1 : 0, created_at: now() };
     db.run(`INSERT INTO databases (id,site_id,engine,db_name,db_user,host,password_ciphertext,granted,created_at) VALUES (${db.sql(database.id)},${db.sql(database.site_id)},${db.sql(database.engine)},${db.sql(database.db_name)},${db.sql(database.db_user)},'localhost',${db.sql(secrets.encrypt(secret))},${database.granted},${db.sql(database.created_at)})`);
     log('Database created', site.name, `${database.engine}: ${database.db_name}`);
     send(response, 201, { ...publicDatabase(database), password: secret, granted: Boolean(provisioned.granted), executed: provisioned.executed, reason: provisioned.reason || null });

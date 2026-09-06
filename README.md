@@ -1,6 +1,6 @@
 # iQPanel
 
-Open-source server control panel for Ubuntu. Phase 1 ships an unprivileged web API plus a root Agent over a Unix socket.
+Open-source server control panel for Ubuntu. The unprivileged web API talks to a root Agent over a Unix socket.
 
 ## Run locally
 
@@ -8,7 +8,7 @@ Open-source server control panel for Ubuntu. Phase 1 ships an unprivileged web A
 npm start
 ```
 
-Open `http://localhost:4173`. The API stores data under `data/`, renders configs under `data/generated/`, and queues deploy/backup/install jobs with retries.
+Open `http://localhost:4173`. Data lives under `data/`, generated configs under `data/generated/`, and deploy/backup/install jobs retry through the SQLite queue.
 
 ```bash
 npm test
@@ -16,7 +16,7 @@ npm test
 
 ## Production layout
 
-The installer (`installer/install.sh`) targets Ubuntu 22.04/24.04. It installs Nginx, PHP 8.3-FPM, MySQL, the root Agent, and the panel API bound to localhost.
+The installer (`installer/install.sh`) targets Ubuntu 22.04/24.04. It installs Nginx, Apache (disabled until a site selects it), PHP 8.2/8.3-FPM, MySQL, PostgreSQL, Docker, Certbot, the root Agent, and the panel API bound to localhost.
 
 ```text
 /opt/iqpanel              application
@@ -26,7 +26,7 @@ The installer (`installer/install.sh`) targets Ubuntu 22.04/24.04. It installs N
 /etc/panel-agent/env      secret key, Agent token, admin password hash
 ```
 
-Set `PANEL_APPLY_SYSTEM=1` on the server so generated Nginx/PHP-FPM/systemd configs are installed under `/etc` and reloaded. In local dev this stays off and configs remain under `data/generated/`.
+Set `PANEL_APPLY_SYSTEM=1` on the server so generated web/PHP-FPM/systemd/UFW/Certbot configs are installed under `/etc` and reloaded. Locally this stays off and files remain under `data/generated/`.
 
 Access the dashboard with an SSH tunnel:
 
@@ -36,13 +36,16 @@ ssh -L 4173:127.0.0.1:4173 user@your-server
 
 Then open `http://127.0.0.1:4173` and sign in with the one-time password printed by the installer.
 
-## Phase 1 features
+## Features
 
-- Sites CRUD, per-site deploy keys, Git clone/pull jobs
-- Template-driven Nginx, PHP-FPM, and systemd units with apply + rollback
-- MySQL create/attach with honest provisioning status
-- Local backups with retention
-- Log discovery, snapshots, and SSE tail streams
-- Cron jobs synced to system crontabs
-- Systemd service management from templates
+- Sites CRUD with Nginx or Apache vhosts, per-site deploy keys, and Git clone/pull jobs
+- PHP, Node, Python, static, and Docker Compose site types
+- Selectable PHP/Node runtime versions (`PANEL_PHP_VERSIONS`, `PANEL_NODE_VERSIONS`)
+- MySQL, MariaDB, and PostgreSQL create/attach with honest provisioning status
+- Local backups plus FTP and Telegram destinations (Telegram splits at 50MB)
+- Certbot and UFW actions generated locally, applied on the server when `PANEL_APPLY_SYSTEM=1`
+- Docker engine status, container actions, and compose up/down/build/pull
+- Web terminal with audited session start/end
+- Cron jobs, systemd templates (Laravel queue, FastAPI, Node, ASP.NET)
+- Multi-server registry (local agent plus remote host/token records)
 - Optional admin login with rate limiting (`PANEL_ADMIN_PASSWORD_HASH`)

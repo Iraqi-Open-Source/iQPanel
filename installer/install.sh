@@ -19,11 +19,12 @@ esac
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y curl git unzip tar ca-certificates sqlite3 openssh-client software-properties-common \
-  nginx apache2 certbot python3 python3-venv python3-pip ufw composer mysql-server
+  nginx apache2 certbot python3 python3-venv python3-pip ufw composer mysql-server postgresql postgresql-contrib docker.io docker-compose-v2
 
 add-apt-repository -y ppa:ondrej/php
 apt-get update
-apt-get install -y php8.3-cli php8.3-fpm php8.3-mysql php8.3-mbstring php8.3-xml php8.3-curl
+apt-get install -y php8.2-cli php8.2-fpm php8.2-mysql php8.2-pgsql php8.2-mbstring php8.2-xml php8.2-curl \
+  php8.3-cli php8.3-fpm php8.3-mysql php8.3-pgsql php8.3-mbstring php8.3-xml php8.3-curl
 
 if ! command -v node >/dev/null 2>&1 || [[ "$(node -v | sed 's/v//' | cut -d. -f1)" -lt 20 ]]; then
   curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
@@ -31,7 +32,7 @@ if ! command -v node >/dev/null 2>&1 || [[ "$(node -v | sed 's/v//' | cut -d. -f
 fi
 
 systemctl disable --now apache2 || true
-systemctl enable --now nginx php8.3-fpm mysql
+systemctl enable --now nginx php8.3-fpm mysql postgresql || true
 
 if command -v ufw >/dev/null 2>&1; then
   ufw --force default deny incoming
@@ -69,6 +70,8 @@ PANEL_DATA_ROOT=/var/lib/iqpanel
 PANEL_SITES_ROOT=/var/www/sites
 PANEL_APPLY_SYSTEM=1
 PANEL_PHP_VERSION=8.3
+PANEL_PHP_VERSIONS=8.2,8.3
+PANEL_NODE_VERSIONS=20
 EOF
 chmod 0640 /etc/panel-agent/env
 chown root:panel /etc/panel-agent/env

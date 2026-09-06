@@ -1,0 +1,15 @@
+<VirtualHost *:{{listen_port}}>
+    ServerName {{server_name}}
+    DocumentRoot {{site_root}}/public
+    <Directory "{{site_root}}/public">
+        AllowOverride All
+        Require all granted
+        Options FollowSymLinks
+        DirectoryIndex index.php index.html
+    </Directory>
+    <FilesMatch \.php$>
+        SetHandler "proxy:unix:/run/php/{{slug}}.sock|fcgi://localhost"
+    </FilesMatch>
+    ErrorLog ${APACHE_LOG_DIR}/{{slug}}-error.log
+    CustomLog ${APACHE_LOG_DIR}/{{slug}}-access.log combined
+</VirtualHost>

@@ -506,3 +506,31 @@ Store these as actual files under `agent/templates/systemd/*.service.hbs` in the
 - License: MIT vs AGPL-3.0?
 - Per-site OS users (stronger isolation, more complex) vs. everything under `www-data`/`panel` (simpler, weaker isolation)? Worth doing per-site users in Phase 3 if you want real multi-tenant security.
 - Single binary Agent (Go) vs. Node Agent (simpler to share code with API, larger footprint)?
+
+---
+
+## 17. WPanel Feature Parity Roadmap
+
+The comparison target advertises a broader VPS product than the current iQPanel MVP. This section is the implementation boundary for parity work; it separates shipped foundations from work that must not be represented as complete prematurely.
+
+### Shipped foundations
+
+- Secure, path-constrained site file operations through the Agent.
+- Allowlisted WP-CLI detection and maintenance commands.
+- Runtime feature catalog and host capability discovery.
+- Alert threshold configuration with encrypted webhook storage.
+
+### Next implementation slices
+
+1. Add installer and Agent modules for OpenLiteSpeed, package/service installation, Fail2Ban, swap, disk growth, SSH keys, mail, phpMyAdmin, and Cloudflare. Every operation must be idempotent, allowlisted, logged, and testable without changing the host in local mode.
+2. Add browser workflows for files, WordPress, alerts, service installation, and host security. Uploads must use size limits, content-type checks, and the same site-root confinement as the API.
+3. Add TOTP 2FA, roles, re-authentication for terminal/root-capable actions, and an audit-log UI before exposing the panel publicly.
+4. Add WordPress provisioning and staging only after database credentials, filesystem ownership, rollback, and backup behavior are covered by integration tests.
+
+### Acceptance criteria for parity
+
+- `/api/system/features` reports `available`, `configurable`, or `planned` based on tested behavior, not README claims.
+- No feature invokes arbitrary user-supplied shell commands.
+- Installer verification covers every supported OS package and systemd unit.
+- API and frontend tests cover success, unavailable-tool, traversal, authentication, and rollback paths.
+- README, checklist, and runtime feature catalog stay synchronized.

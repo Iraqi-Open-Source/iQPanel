@@ -105,6 +105,16 @@ CREATE TABLE IF NOT EXISTS settings (
   value TEXT NOT NULL DEFAULT ''
 );
 
+CREATE TABLE IF NOT EXISTS alert_events (
+  id TEXT PRIMARY KEY,
+  channel TEXT NOT NULL,
+  metric TEXT NOT NULL,
+  value REAL NOT NULL,
+  threshold REAL NOT NULL,
+  status TEXT NOT NULL DEFAULT 'queued',
+  created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS docker_containers (
   id TEXT PRIMARY KEY,
   site_id TEXT REFERENCES sites(id) ON DELETE SET NULL,

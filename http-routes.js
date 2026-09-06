@@ -13,6 +13,9 @@ const { handleSettings } = require('./http-settings');
 const { handleTerminal } = require('./http-terminal');
 const { handleSiteCreate } = require('./http-site-create');
 const { handleSiteExtras } = require('./http-site-extras');
+const { handleFiles } = require('./http-files');
+const { handleWordpress } = require('./http-wordpress');
+const { handleSystem } = require('./http-system');
 
 const publicDir = path.join(publicRoot, 'public');
 const staticExtensions = new Set(['.html', '.css', '.js', '.svg', '.png', '.ico', '.woff2']);
@@ -26,11 +29,14 @@ async function handleRequest(request, response) {
     if (await handleServers(request, response, url.pathname)) return;
     if (await handleSettings(request, response, url.pathname)) return;
     if (await handleTerminal(request, response, url.pathname)) return;
+    if (await handleSystem(request, response, url.pathname)) return;
     if (await handleData(request, response, url.pathname)) return;
     if (await handleCron(request, response, url.pathname)) return;
     if (await handleServices(request, response, url.pathname)) return;
     if (await handleSiteCreate(request, response, url.pathname)) return;
     if (await handleSiteExtras(request, response, url.pathname)) return;
+    if (await handleFiles(request, response, url.pathname)) return;
+    if (await handleWordpress(request, response, url.pathname)) return;
     if (await handleSites(request, response, url.pathname)) return;
     send(response, 404, { error: 'Not found' });
     return;

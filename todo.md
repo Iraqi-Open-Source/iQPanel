@@ -71,7 +71,22 @@ Status reflects Phase 1 and Phase 2 work against `opensource-server-panel-plan.m
 - [ ] Remote agent TCP invoke routing per registered server
 - [ ] Per-site isolated system users
 - [ ] GitHub webhooks for auto-deploy and rollback
-- [ ] Role-based access control, 2FA, full audit log UI
+- [ ] Role-based access control, TOTP 2FA, full audit log UI
+- [ ] OpenLiteSpeed support and LNMP/LAMP/LLMP stack presets
+- [ ] Cloudflare DNS, mail server, phpMyAdmin, Fail2Ban, swap, disk extension, and SSH key management
+- [ ] Service installer UI with package allowlists and idempotent install jobs
+- [ ] Browser file-manager UI and upload/download support on top of the secure file API
+- [ ] WordPress one-click install, staging/clone, backup/restore, config editor, and plugin/theme management
+- [ ] Alert delivery worker for Telegram and Discord threshold notifications
+
+## Feature foundations shipped
+
+- [x] Path-constrained per-site file API (`/api/sites/:slug/files`)
+- [x] Allowlisted WordPress WP-CLI API (`/api/sites/:slug/wordpress`)
+- [x] Runtime feature catalog and host capability inventory
+- [x] Alert threshold configuration with encrypted Discord webhook storage
+
+These foundations deliberately return `planned` for integrations that still need installer, agent, and UI work. Do not mark a feature complete until it has an API, safe privileged implementation, frontend workflow, installer coverage, and tests.
 
 ## Manual verification (Ubuntu VM)
 

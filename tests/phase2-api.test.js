@@ -174,3 +174,28 @@ test('terminal sessions echo input without extra packages', async () => {
   assert.equal(closed.status, 204);
 });
 
+test('feature catalog and secure site file manager are available', async () => {
+  const features = await (await fetch(`${base}/api/system/features`)).json();
+  assert.equal(features.file_manager.status, 'available');
+  assert.equal(features.wordpress.status, 'available');
+  assert.equal(features.two_factor.status, 'planned');
+
+  const write = await fetch(`${base}/api/sites/apache-app/files`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ path: 'storage/panel-test.txt', content: 'safe file manager write' }),
+  });
+  assert.equal(write.status, 200);
+  const read = await (await fetch(`${base}/api/sites/apache-app/files/content?path=storage/panel-test.txt`)).json();
+  assert.equal(read.content, 'safe file manager write');
+
+  const traversal = await fetch(`${base}/api/sites/apache-app/files/content?path=../../outside.txt`);
+  assert.equal(traversal.status, 400);
+});
+
+test('system capabilities and WordPress availability do not require optional tools', async () => {
+  const capabilities = await (await fetch(`${base}/api/system/capabilities`)).json();
+  assert.equal(typeof capabilities.available, 'object');
+  const wordpress = await (await fetch(`${base}/api/sites/apache-app/wordpress`)).json();
+  assert.equal(typeof wordpress.available, 'boolean');
+});

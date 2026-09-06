@@ -15,6 +15,70 @@ function assertSlug(slug) {
 
 function sitePath(slug) { assertSlug(slug); return path.join(sitesRoot, slug); }
 
+function safeSitePath(slug, relative = '') {
+  const base = path.join(sitePath(slug), 'app');
+  const resolved = path.resolve(base, String(relative || '.'));
+  if (resolved !== base && !resolved.startsWith(`${base}${path.sep}`)) throw new Error('Path escapes site root');
+  return resolved;
+}
+
+function listFiles(slug, relative = '.') {
+  const directory = safeSitePath(slug, relative);
+  if (!fs.existsSync(directory) || !fs.statSync(directory).isDirectory()) throw new Error('Directory not found');
+  return fs.readdirSync(directory, { withFileTypes: true }).map((entry) => {
+    const full = path.join(directory, entry.name);
+    const stats = fs.statSync(full);
+    return { name: entry.name, type: entry.isDirectory() ? 'directory' : 'file', size: stats.size, modified_at: stats.mtime.toISOString() };
+  }).sort((a, b) => a.type.localeCompare(b.type) || a.name.localeCompare(b.name));
+}
+
+function readSiteFile(slug, relative) {
+  const filePath = safeSitePath(slug, relative);
+  if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) throw new Error('File not found');
+  if (fs.statSync(filePath).size > 2 * 1024 * 1024) throw new Error('File is too large to edit in the panel');
+  return { path: relative, content: fs.readFileSync(filePath, 'utf8') };
+}
+
+function writeSiteFile(slug, relative, content) {
+  const filePath = safeSitePath(slug, relative);
+  if (typeof content !== 'string' || Buffer.byteLength(content) > 2 * 1024 * 1024) throw new Error('File is too large');
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, content, { mode: 0o640 });
+  return { path: relative, size: Buffer.byteLength(content) };
+}
+
+function mutateSiteFile(slug, action, relative, target) {
+  const filePath = safeSitePath(slug, relative);
+  if (action === 'mkdir') fs.mkdirSync(filePath, { recursive: true });
+  else if (action === 'delete') fs.rmSync(filePath, { recursive: true, force: true });
+  else if (action === 'rename') fs.renameSync(filePath, safeSitePath(slug, target));
+  else throw new Error('Unsupported file action');
+  return { ok: true };
+}
+
+async function wordpress(slug, action, args = []) {
+  const allowed = {
+    version: ['core', 'version'],
+    plugins: ['plugin', 'list', '--format=json'],
+    themes: ['theme', 'list', '--format=json'],
+    core_update: ['core', 'update'],
+    plugin_update: ['plugin', 'update', '--all'],
+    theme_update: ['theme', 'update', '--all'],
+  };
+  if (!Object.hasOwn(allowed, action)) throw new Error('Unsupported WordPress action');
+  const app = sitePath(slug) + '/app';
+  return command('wp', [...allowed[action], ...args.map(String)], { cwd: app, env: { ...process.env, WP_CLI_ALLOW_ROOT: '1' } });
+}
+
+async function systemCapabilities() {
+  const commands = ['nginx', 'apache2', 'certbot', 'docker', 'ufw', 'fail2ban-client', 'wp', 'swapon', 'lsblk'];
+  const available = {};
+  for (const program of commands) {
+    try { await command('sh', ['-c', `command -v ${program}`]); available[program] = true; } catch { available[program] = false; }
+  }
+  return { available, generated_config_root: root };
+}
+
 function command(program, args, options = {}) {
   const { input, ...spawnOptions } = options;
   return new Promise((resolve, reject) => {
@@ -195,5 +259,11 @@ module.exports = {
   installSite,
   removeSite,
   sitePath,
+  listFiles,
+  readSiteFile,
+  writeSiteFile,
+  mutateSiteFile,
+  wordpress,
+  systemCapabilities,
   command,
 };

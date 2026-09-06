@@ -1,0 +1,22 @@
+[Unit]
+Description=iQPanel web API and dashboard
+After=network.target iqpanel-agent.service
+
+[Service]
+Type=simple
+User=panel
+Group=panel
+WorkingDirectory=/opt/iqpanel
+Environment=PANEL_DATA_ROOT=/var/lib/iqpanel
+Environment=PANEL_SITES_ROOT=/var/www/sites
+ExecStart=/usr/bin/node /opt/iqpanel/app-http.js
+Environment=PANEL_AGENT_SOCKET=/run/iqpanel-agent.sock
+EnvironmentFile=/etc/panel-agent/env
+Restart=on-failure
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/var/lib/iqpanel /var/www/sites
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,110 @@
+
+          <section class="view" id="deployments-view">
+            <div class="page-heading">
+              <div>
+                <p class="eyebrow">WORKSPACE / DEPLOYMENTS</p>
+                <h1>Deployment history<span class="heading-period">.</span></h1>
+                <p class="subheading">Commits, builds, and release jobs from the worker queue.</p>
+              </div>
+            </div>
+            <div class="panel"><div class="data-list" id="deployments-list"></div></div>
+          </section>
+
+          <section class="view" id="databases-view">
+            <div class="page-heading">
+              <div>
+                <p class="eyebrow">INFRASTRUCTURE / DATABASES</p>
+                <h1>Data, under control<span class="heading-period">.</span></h1>
+                <p class="subheading">Manage MySQL databases and users per site.</p>
+              </div>
+              <button class="primary-button" type="button" data-open-modal="database-modal"><span>+</span> Create database</button>
+            </div>
+            <div class="panel"><div class="data-list" id="databases-list"></div></div>
+          </section>
+
+          <section class="view" id="backups-view">
+            <div class="page-heading">
+              <div>
+                <p class="eyebrow">INFRASTRUCTURE / BACKUPS</p>
+                <h1>Backups<span class="heading-period">.</span></h1>
+                <p class="subheading">Local snapshots recorded by the panel worker.</p>
+              </div>
+            </div>
+            <div class="panel"><div class="data-list" id="backups-list"></div></div>
+          </section>
+
+          <section class="view" id="services-view">
+            <div class="page-heading">
+              <div>
+                <p class="eyebrow">INFRASTRUCTURE / SERVICES</p>
+                <h1>Services<span class="heading-period">.</span></h1>
+                <p class="subheading">Systemd units managed per site.</p>
+              </div>
+              <button class="primary-button" type="button" id="create-service-button" disabled><span>+</span> Create service</button>
+            </div>
+            <div class="toolbar">
+              <label class="search-box logs-site-label">Site
+                <select id="services-site-select"></select>
+              </label>
+            </div>
+            <div class="panel"><div class="data-list" id="services-list"></div></div>
+          </section>
+
+          <section class="view" id="logs-view">
+            <div class="page-heading">
+              <div>
+                <p class="eyebrow">INFRASTRUCTURE / LOGS</p>
+                <h1>Application logs<span class="heading-period">.</span></h1>
+                <p class="subheading">Tail Nginx, PHP-FPM, and app logs via the agent.</p>
+              </div>
+            </div>
+            <div class="logs-layout panel">
+              <div class="logs-toolbar">
+                <label>Site<select id="logs-site-select"></select></label>
+                <label>Log file<select id="logs-file-select"></select></label>
+                <label class="logs-stream-toggle"><input type="checkbox" id="logs-stream-toggle" /> Live stream</label>
+                <button class="secondary-button" type="button" id="logs-refresh">Refresh</button>
+              </div>
+              <pre class="logs-output" id="logs-output" aria-live="polite"></pre>
+            </div>
+          </section>
+
+          <section class="view" id="cron-view">
+            <div class="page-heading">
+              <div>
+                <p class="eyebrow">INFRASTRUCTURE / CRON</p>
+                <h1>Scheduled jobs<span class="heading-period">.</span></h1>
+                <p class="subheading">Crontab entries synced to the server agent.</p>
+              </div>
+              <button class="primary-button" type="button" data-open-modal="cron-modal"><span>+</span> Add cron job</button>
+            </div>
+            <div class="panel"><div class="data-list" id="cron-list"></div></div>
+          </section>
+
+          <section class="view placeholder-view" id="terminal-view">
+            <div class="empty-hero">
+              <span class="hero-glyph">&gt;_</span>
+              <p class="eyebrow">SYSTEM / TERMINAL</p>
+              <h1>Phase 2<span class="heading-period">.</span></h1>
+              <p>Interactive terminal sessions will arrive in a later release. They will be role-gated, audited, and scoped through the local agent.</p>
+            </div>
+          </section>
+
+          <section class="view" id="settings-view">
+            <div class="page-heading">
+              <div>
+                <p class="eyebrow">SYSTEM / SETTINGS</p>
+                <h1>Panel settings<span class="heading-period">.</span></h1>
+                <p class="subheading">Runtime configuration for this panel instance.</p>
+              </div>
+            </div>
+            <div class="settings-panel panel">
+              <div class="data-row"><span>Agent connection</span><strong id="settings-agent-mode">—</strong></div>
+              <div class="data-row"><span>Agent status</span><strong id="settings-agent-status">—</strong></div>
+              <div class="data-row"><span>Data root</span><code id="settings-data-root">—</code></div>
+              <div class="data-row"><span>Authentication</span><strong id="settings-auth">—</strong></div>
+              <div class="settings-actions">
+                <button class="secondary-button" type="button" id="settings-logout">Sign out</button>
+              </div>
+            </div>
+          </section>

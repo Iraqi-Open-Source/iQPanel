@@ -1,0 +1,199 @@
+const fs = require('node:fs');
+const path = require('node:path');
+const { execFileSync, spawn } = require('node:child_process');
+const { root } = require('./db');
+const paths = require('./paths');
+const { renderTemplate } = require('./template');
+const { nginxListenPort, upstreamPort } = require('./ports');
+
+const sitesRoot = process.env.PANEL_SITES_ROOT || path.join(root, 'sites');
+fs.mkdirSync(sitesRoot, { recursive: true, mode: 0o750 });
+
+function assertSlug(slug) {
+  if (!/^[a-z0-9][a-z0-9-]{1,48}$/.test(slug)) throw new Error('Invalid site slug');
+}
+
+function sitePath(slug) { assertSlug(slug); return path.join(sitesRoot, slug); }
+
+function command(program, args, options = {}) {
+  const { input, ...spawnOptions } = options;
+  return new Promise((resolve, reject) => {
+    const child = spawn(program, args, { ...spawnOptions, shell: false });
+    if (input != null) {
+      child.stdin.on('error', () => {});
+      child.stdin.end(input);
+    }
+    let stdout = '';
+    let stderr = '';
+    child.stdout?.on('data', (chunk) => { stdout += chunk; });
+    child.stderr?.on('data', (chunk) => { stderr += chunk; });
+    child.on('error', reject);
+    child.on('close', (code) => code === 0 ? resolve({ stdout, stderr }) : reject(new Error(stderr || `${program} exited with ${code}`)));
+  });
+}
+
+function createSite(slug) {
+  const directory = sitePath(slug);
+  const sshDirectory = path.join(directory, '.ssh');
+  fs.mkdirSync(path.join(directory, 'app'), { recursive: true, mode: 0o750 });
+  fs.mkdirSync(sshDirectory, { recursive: true, mode: 0o700 });
+  const keyPath = path.join(sshDirectory, 'id_ed25519');
+  if (!fs.existsSync(keyPath)) {
+    execKeygen(keyPath);
+  }
+  return { directory, keyPath, publicKey: fs.readFileSync(`${keyPath}.pub`, 'utf8').trim() };
+}
+
+function execKeygen(keyPath) {
+  execFileSync('ssh-keygen', ['-t', 'ed25519', '-f', keyPath, '-N', '', '-C', 'iqpanel-site'], { stdio: 'ignore' });
+  fs.chmodSync(keyPath, 0o600);
+  fs.chmodSync(`${keyPath}.pub`, 0o644);
+}
+
+async function cloneRepository(slug, repoUrl) {
+  const directory = sitePath(slug);
+  const keyPath = path.join(directory, '.ssh', 'id_ed25519');
+  if (!/^git@[\w.-]+:[\w./-]+(?:\.git)?$/.test(repoUrl)) throw new Error('Only SSH Git URLs are supported');
+  const appPath = path.join(directory, 'app');
+  if (fs.existsSync(path.join(appPath, '.git'))) {
+    return command('git', ['-C', appPath, 'pull', '--ff-only'], { env: { ...process.env, GIT_SSH_COMMAND: `ssh -i ${keyPath} -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new` } });
+  }
+  fs.rmSync(appPath, { recursive: true, force: true });
+  fs.mkdirSync(appPath, { recursive: true });
+  return command('git', ['clone', repoUrl, appPath], { env: { ...process.env, GIT_SSH_COMMAND: `ssh -i ${keyPath} -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new` } });
+}
+
+function nginxTemplateVars(site) {
+  const listenPort = nginxListenPort(site);
+  return {
+    slug: site.slug,
+    listen_port: listenPort,
+    server_name: site.domain || '_',
+    site_root: path.join(sitePath(site.slug), 'app'),
+    site_path: sitePath(site.slug),
+    upstream_port: upstreamPort(site) || listenPort,
+  };
+}
+
+function writeNginxConfig(site) {
+  fs.mkdirSync(path.join(paths.generatedRoot(), 'nginx'), { recursive: true });
+  const vars = nginxTemplateVars(site);
+  let template = 'nginx/proxy.conf.hbs';
+  if (site.type === 'php') template = 'nginx/php.conf.hbs';
+  else if (site.type === 'static') template = 'nginx/static.conf.hbs';
+  const filePath = paths.nginxGenerated(site.slug);
+  fs.writeFileSync(filePath, renderTemplate(template, vars), { mode: 0o640 });
+  return filePath;
+}
+
+function writePhpPool(site) {
+  fs.mkdirSync(path.join(paths.generatedRoot(), 'php-fpm'), { recursive: true });
+  const version = site.runtime_version || paths.phpVersion;
+  const filePath = paths.phpPoolGenerated(site.slug);
+  fs.writeFileSync(filePath, renderTemplate('php-fpm/pool.conf.hbs', {
+    slug: site.slug,
+    memory_limit: site.memory_limit || '256M',
+    upload_max_filesize: site.upload_max_filesize || '64M',
+  }), { mode: 0o640 });
+  return { filePath, version };
+}
+
+function writeSystemdTemplate(site, template = 'laravel-queue') {
+  fs.mkdirSync(path.join(paths.generatedRoot(), 'systemd'), { recursive: true });
+  const filePath = paths.systemdGenerated(site.slug, template);
+  fs.writeFileSync(filePath, renderTemplate('systemd/laravel-queue.service.hbs', {
+    slug: site.slug,
+    php_version: site.runtime_version || paths.phpVersion,
+    site_path: sitePath(site.slug),
+  }), { mode: 0o640 });
+  return { filePath, template, unitName: `panel-${site.slug}-${template}` };
+}
+
+
+const apply = require('./agent-apply');
+
+async function applyNginxConfig(site) {
+  return apply.applyNginxConfig(site, { writeNginxConfig, command });
+}
+
+async function applyPhpPool(site) {
+  return apply.applyPhpPool(site, { writePhpPool, command });
+}
+
+async function applySystemdUnit(site, template = 'laravel-queue') {
+  return apply.applySystemdUnit(site, template, { writeSystemdTemplate, command });
+}
+
+async function controlSystemdUnit(unitName, action) {
+  return apply.controlSystemdUnit(unitName, action, { command });
+}
+
+function removeNginxConfig(slug) {
+  return apply.removeNginxConfig(slug, assertSlug);
+}
+
+function removePhpPool(slug, version = paths.phpVersion) {
+  return apply.removePhpPool(slug, version, assertSlug);
+}
+
+async function removeSystemdUnits(slug) {
+  return apply.removeSystemdUnits(slug, assertSlug, command);
+}
+
+async function createBackup(site) {
+  const directory = path.join(root, 'backups', site.slug, new Date().toISOString().replaceAll(':', '-'));
+  fs.mkdirSync(directory, { recursive: true });
+  const archivePath = path.join(directory, 'files.tar.gz');
+  await command('tar', ['--exclude=node_modules', '--exclude=vendor', '-czf', archivePath, '-C', sitePath(site.slug), 'app']);
+  return { path: archivePath, size: fs.statSync(archivePath).size };
+}
+
+const allowedInstallCommands = {
+  php: [['composer', ['install', '--no-dev', '--optimize-autoloader']], ['php', ['artisan', 'optimize:clear']]],
+  node: [['npm', ['ci']], ['npm', ['run', 'build']]],
+  python: [['python3', ['-m', 'pip', 'install', '-r', 'requirements.txt']]],
+  static: [['npm', ['ci']], ['npm', ['run', 'build']]],
+};
+
+async function installSite(site) {
+  const output = [];
+  const app = path.join(sitePath(site.slug), 'app');
+  for (const [program, args] of allowedInstallCommands[site.type] || []) {
+    const result = await command(program, args, { cwd: app });
+    output.push(`${program} ${args.join(' ')}\n${result.stdout}${result.stderr}`);
+  }
+  return output.join('\n');
+}
+
+async function removeSite(slug, options = {}) {
+  assertSlug(slug);
+  removeNginxConfig(slug);
+  removePhpPool(slug, options.runtime_version || paths.phpVersion);
+  await removeSystemdUnits(slug);
+  if (paths.applySystem) {
+    await command('systemctl', ['reload', 'nginx']).catch(() => {});
+    await command('systemctl', ['reload', `php${options.runtime_version || paths.phpVersion}-fpm`]).catch(() => {});
+  }
+  fs.rmSync(sitePath(slug), { recursive: true, force: true });
+  return { removed: true, slug };
+}
+
+module.exports = {
+  createSite,
+  cloneRepository,
+  writeNginxConfig,
+  writePhpPool,
+  writeSystemdTemplate,
+  applyNginxConfig,
+  applyPhpPool,
+  applySystemdUnit,
+  controlSystemdUnit,
+  removeNginxConfig,
+  removePhpPool,
+  removeSystemdUnits,
+  createBackup,
+  installSite,
+  removeSite,
+  sitePath,
+  command,
+};

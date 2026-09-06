@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="iQPanel open-source server control panel" />
+    <title>iQPanel | Server control, without the noise</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div id="login-screen" class="login-screen" hidden>
+      <div class="login-card">
+        <div class="brand-lockup login-brand">
+          <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div>
+          <div><strong>iQPanel</strong><small>server control</small></div>
+        </div>
+        <h1>Sign in</h1>
+        <p class="login-intro">Enter your admin password to access this server.</p>
+        <form id="login-form">
+          <label>Password<input type="password" name="password" autocomplete="current-password" required /></label>
+          <p id="login-error" class="login-error" hidden></p>
+          <button class="primary-button login-submit" type="submit">Sign in <span>→</span></button>
+        </form>
+      </div>
+    </div>
+
+    <div class="app-shell" id="app-shell" hidden>
+      <aside class="sidebar" aria-label="Primary navigation">
+        <div class="brand-lockup">
+          <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div>
+          <div><strong>iQPanel</strong><small>server control</small></div>
+        </div>
+        <div class="server-switcher">
+          <span class="server-pulse" id="server-pulse"></span>
+          <div><small>Connected server</small><strong id="server-label">Local agent</strong></div>
+        </div>
+        <nav class="nav-groups">
+          <div class="nav-label">Workspace</div>
+          <button class="nav-item active" data-view="overview"><span class="nav-icon">◈</span>Overview</button>
+          <button class="nav-item" type="button" data-view="sites"><span class="nav-icon">⌘</span>Sites <b class="nav-count" id="nav-sites-count"></b></button>
+          <button class="nav-item" type="button" data-view="deployments"><span class="nav-icon">↗</span>Deployments</button>
+          <div class="nav-label">Infrastructure</div>
+          <button class="nav-item" type="button" data-view="databases"><span class="nav-icon">◉</span>Databases</button>
+          <button class="nav-item" type="button" data-view="backups"><span class="nav-icon">↻</span>Backups</button>
+          <button class="nav-item" type="button" data-view="services"><span class="nav-icon">▣</span>Services</button>
+          <button class="nav-item" type="button" data-view="logs"><span class="nav-icon">≡</span>Logs</button>
+          <button class="nav-item" type="button" data-view="cron"><span class="nav-icon">◷</span>Cron</button>
+          <div class="nav-label">System</div>
+          <button class="nav-item" type="button" data-view="terminal"><span class="nav-icon">&gt;_</span>Terminal</button>
+          <button class="nav-item" type="button" data-view="settings"><span class="nav-icon">⚙</span>Settings</button>
+        </nav>
+        <div class="sidebar-footer">
+          <div class="agent-status"><span class="status-dot" id="sidebar-agent-dot"></span><div><strong id="sidebar-agent-label">Agent</strong><small id="sidebar-agent-meta">Checking…</small></div></div>
+          <div class="user-row"><div class="avatar">AD</div><div><strong>Administrator</strong><small>Panel session</small></div><button class="icon-button" type="button" id="logout-button" aria-label="Sign out" title="Sign out">↗</button></div>
+        </div>
+      </aside>
+
+      <main class="main-content">
+        <header class="topbar">
+          <div class="breadcrumbs"><span>Workspace</span><span>/</span><strong id="breadcrumb">Overview</strong></div>
+          <div class="topbar-actions"><div class="secure-chip"><span class="lock">⌁</span> Local agent secured</div><button class="icon-button notification" aria-label="Notifications">♢<i></i></button><button class="avatar top-avatar" type="button" id="logout-button-top" aria-label="Sign out">AD</button></div>
+        </header>
+
+        <div class="page-wrap">
+          <section class="view active" id="overview-view">
+            <div class="page-heading"><div><p class="eyebrow" id="overview-date"><span class="live-label"><i></i>LIVE</span></p><h1>Server overview<span class="heading-period">.</span></h1><p class="subheading" id="overview-subheading">Loading dashboard…</p></div><button class="primary-button" type="button" data-open-modal="site-modal"><span>+</span> New site</button></div>
+            <div class="metric-grid" id="metric-grid"></div>
+            <div class="content-grid">
+              <section class="panel sites-panel"><div class="panel-heading"><div><h2>Sites</h2><p>All your applications in one place.</p></div><button class="text-button" type="button" data-view-link="sites">View all <span>↗</span></button></div><div id="site-list" class="site-list"></div></section>
+              <section class="panel activity-panel"><div class="panel-heading"><div><h2>Activity</h2><p>Recent changes on this server.</p></div><button class="icon-button" aria-label="Activity options">•••</button></div><div class="activity-list" id="activity-list"></div>
+                <button class="activity-footer" type="button" data-view-link="deployments">Open activity log <span>→</span></button></section>
+            </div>
+            <div class="bottom-grid"><section class="panel health-panel"><div class="panel-heading"><div><h2>Server health</h2><p id="health-subtitle">Core services status.</p></div><span class="healthy-badge" id="health-badge" hidden><i></i> Healthy</span></div><div class="service-health" id="service-health"></div></section><section class="panel quick-panel"><div class="panel-heading"><div><h2>Quick actions</h2><p>Common server operations.</p></div></div><div class="quick-actions"><button type="button" data-open-modal="site-modal"><span>+</span><b>Add a site</b><small>Deploy from Git</small></button><button type="button" data-open-modal="database-modal"><span>◉</span><b>New database</b><small>MySQL or PostgreSQL</small></button><button type="button" data-view-link="backups"><span>↻</span><b>View backups</b><small>Site snapshots</small></button></div></section></div>
+          </section>
+
+          <section class="view" id="sites-view"><div class="page-heading"><div><p class="eyebrow">WORKSPACE / SITES</p><h1>Your sites<span class="heading-period">.</span></h1><p class="subheading">Deploy, monitor, and manage every application from one place.</p></div><button class="primary-button" type="button" data-open-modal="site-modal"><span>+</span> New site</button></div><div class="toolbar"><div class="search-box"><span>⌕</span><input id="site-search" type="search" placeholder="Search sites..." /></div><div class="filter-tabs" id="site-filter-tabs"><button type="button" class="selected" data-filter="all">All</button><button type="button" data-filter="online">Online</button><button type="button" data-filter="attention">Needs attention</button></div></div><div id="full-site-list" class="full-site-list"></div></section>
+
+          
+          <section class="view" id="deployments-view">
+            <div class="page-heading">
+              <div>
+                <p class="eyebrow">WORKSPACE / DEPLOYMENTS</p>
+                <h1>Deployment history<span class="heading-period">.</span></h1>
+                <p class="subheading">Commits, builds, and release jobs from the worker queue.</p>
+              </div>
+            </div>
+            <div class="panel"><div class="data-list" id="deployments-list"></div></div>
+          </section>
+
+          <section class="view" id="databases-view">
+            <div class="page-heading">
+              <div>
+                <p class="eyebrow">INFRASTRUCTURE / DATABASES</p>
+                <h1>Data, under control<span class="heading-period">.</span></h1>
+                <p class="subheading">Manage MySQL databases and users per site.</p>
+              </div>
+              <button class="primary-button" type="button" data-open-modal="database-modal"><span>+</span> Create database</button>
+            </div>
+            <div class="panel"><div class="data-list" id="databases-list"></div></div>
+          </section>
+
+          <section class="view" id="backups-view">
+            <div class="page-heading">
+              <div>
+                <p class="eyebrow">INFRASTRUCTURE / BACKUPS</p>
+                <h1>Backups<span class="heading-period">.</span></h1>
+                <p class="subheading">Local snapshots recorded by the panel worker.</p>
+              </div>
+            </div>
+            <div class="panel"><div class="data-list" id="backups-list"></div></div>
+          </section>
+
+          <section class="view" id="services-view">
+            <div class="page-heading">
+              <div>
+                <p class="eyebrow">INFRASTRUCTURE / SERVICES</p>
+                <h1>Services<span class="heading-period">.</span></h1>
+                <p class="subheading">Systemd units managed per site.</p>
+              </div>
+              <button class="primary-button" type="button" id="create-service-button" disabled><span>+</span> Create service</button>
+            </div>
+            <div class="toolbar">
+              <label class="search-box logs-site-label">Site
+                <select id="services-site-select"></select>
+              </label>
+            </div>
+            <div class="panel"><div class="data-list" id="services-list"></div></div>
+          </section>
+
+          <section class="view" id="logs-view">
+            <div class="page-heading">
+              <div>
+                <p class="eyebrow">INFRASTRUCTURE / LOGS</p>
+                <h1>Application logs<span class="heading-period">.</span></h1>
+                <p class="subheading">Tail Nginx, PHP-FPM, and app logs via the agent.</p>
+              </div>
+            </div>
+            <div class="logs-layout panel">
+              <div class="logs-toolbar">
+                <label>Site<select id="logs-site-select"></select></label>
+                <label>Log file<select id="logs-file-select"></select></label>
+                <label class="logs-stream-toggle"><input type="checkbox" id="logs-stream-toggle" /> Live stream</label>
+                <button class="secondary-button" type="button" id="logs-refresh">Refresh</button>
+              </div>
+              <pre class="logs-output" id="logs-output" aria-live="polite"></pre>
+            </div>
+          </section>
+
+          <section class="view" id="cron-view">
+            <div class="page-heading">
+              <div>
+                <p class="eyebrow">INFRASTRUCTURE / CRON</p>
+                <h1>Scheduled jobs<span class="heading-period">.</span></h1>
+                <p class="subheading">Crontab entries synced to the server agent.</p>
+              </div>
+              <button class="primary-button" type="button" data-open-modal="cron-modal"><span>+</span> Add cron job</button>
+            </div>
+            <div class="panel"><div class="data-list" id="cron-list"></div></div>
+          </section>
+
+          <section class="view placeholder-view" id="terminal-view">
+            <div class="empty-hero">
+              <span class="hero-glyph">&gt;_</span>
+              <p class="eyebrow">SYSTEM / TERMINAL</p>
+              <h1>Phase 2<span class="heading-period">.</span></h1>
+              <p>Interactive terminal sessions will arrive in a later release. They will be role-gated, audited, and scoped through the local agent.</p>
+            </div>
+          </section>
+
+          <section class="view" id="settings-view">
+            <div class="page-heading">
+              <div>
+                <p class="eyebrow">SYSTEM / SETTINGS</p>
+                <h1>Panel settings<span class="heading-period">.</span></h1>
+                <p class="subheading">Runtime configuration for this panel instance.</p>
+              </div>
+            </div>
+            <div class="settings-panel panel">
+              <div class="data-row"><span>Agent connection</span><strong id="settings-agent-mode">—</strong></div>
+              <div class="data-row"><span>Agent status</span><strong id="settings-agent-status">—</strong></div>
+              <div class="data-row"><span>Data root</span><code id="settings-data-root">—</code></div>
+              <div class="data-row"><span>Authentication</span><strong id="settings-auth">—</strong></div>
+              <div class="settings-actions">
+                <button class="secondary-button" type="button" id="settings-logout">Sign out</button>
+              </div>
+            </div>
+          </section>
+
+        </div>
+      </main>
+    </div>
+
+    <div class="modal-backdrop" id="site-modal" role="dialog" aria-modal="true" aria-labelledby="site-modal-title" hidden><div class="modal"><button class="modal-close icon-button" type="button" data-close-modal aria-label="Close dialog">×</button><div class="modal-kicker" id="site-modal-kicker"><span class="step-dot active"></span><span></span><span class="step-dot"></span><span></span><span class="step-dot"></span></div><p class="eyebrow" id="site-modal-eyebrow">NEW SITE / STEP 1 OF 3</p><h2 id="site-modal-title">Let’s deploy something.</h2><p class="modal-intro">Start with a private, per-site SSH key. No personal GitHub token required.</p><form id="new-site-form"><label>Repository SSH URL<input name="repo" required placeholder="git@github.com:you/project.git" /></label><label>Site name <span class="optional">optional</span><input name="name" placeholder="Defaults to repository name" /></label><div class="form-row"><label>Application type<select name="type"><option value="php">PHP / Laravel</option><option value="node">Node.js</option><option value="python">Python</option><option value="static">Static site</option></select></label><label>Web server<select name="server"><option>Nginx</option><option>Apache</option></select></label></div><div class="security-note"><span>⌁</span><div><strong>Agent-secured setup</strong><p>The root Agent generates and stores this site's unique deploy key. The browser never handles server credentials.</p></div></div><div class="modal-actions"><button type="button" class="secondary-button" data-close-modal>Cancel</button><button class="primary-button" type="submit">Generate deploy key <span>→</span></button></div></form><div class="deploy-success" id="deploy-success" hidden><span class="success-mark">✓</span><p class="eyebrow">KEY READY</p><h2>Add this key to GitHub.</h2><p class="modal-intro">Add it as a read-only Deploy Key in your repository settings, then come back to clone the project.</p><div class="key-box"><code id="deploy-key"></code><button type="button" id="copy-key">Copy</button></div><div class="modal-actions"><button class="secondary-button" data-close-modal>Close</button><button class="primary-button" type="button" id="finish-site">Clone repository <span>→</span></button></div></div></div></div>
+
+    <div class="modal-backdrop" id="database-modal" role="dialog" aria-modal="true" aria-labelledby="database-modal-title" hidden>
+      <div class="modal">
+        <button class="modal-close icon-button" type="button" data-close-modal aria-label="Close dialog">×</button>
+        <p class="eyebrow">INFRASTRUCTURE / DATABASE</p>
+        <h2 id="database-modal-title">Create database</h2>
+        <p class="modal-intro">Provision a MySQL database and user for a site.</p>
+        <form id="database-form">
+          <label>Site<select name="site_slug" id="database-site-select" required></select></label>
+          <label>Database name<input name="db_name" required placeholder="my_app" /></label>
+          <label>Database user <span class="optional">optional</span><input name="db_user" placeholder="Defaults to site user" /></label>
+          <label>Password <span class="optional">optional</span><input name="password" type="password" autocomplete="new-password" placeholder="Generated if empty" /></label>
+          <div class="form-row">
+            <label>Engine<select name="engine"><option value="mysql">MySQL</option><option value="mariadb">MariaDB</option></select></label>
+            <label>Mode<select name="mode"><option value="create">Create new</option><option value="attach">Attach existing</option></select></label>
+          </div>
+          <div class="modal-actions"><button type="button" class="secondary-button" data-close-modal>Cancel</button><button class="primary-button" type="submit">Create <span>→</span></button></div>
+        </form>
+      </div>
+    </div>
+
+    <div class="modal-backdrop" id="cron-modal" role="dialog" aria-modal="true" aria-labelledby="cron-modal-title" hidden>
+      <div class="modal">
+        <button class="modal-close icon-button" type="button" data-close-modal aria-label="Close dialog">×</button>
+        <p class="eyebrow">INFRASTRUCTURE / CRON</p>
+        <h2 id="cron-modal-title">Add cron job</h2>
+        <p class="modal-intro">Five-field cron schedule synced to the server crontab.</p>
+        <form id="cron-form">
+          <label>Site <span class="optional">optional</span><select name="site_slug" id="cron-site-select"><option value="">Server-wide</option></select></label>
+          <label>Schedule<input name="schedule" required placeholder="*/5 * * * *" /></label>
+          <label>Command<input name="command" required placeholder="/usr/bin/php artisan schedule:run" /></label>
+          <label>Run as user<input name="run_as_user" value="www-data" /></label>
+          <label class="cron-enabled-row"><input type="checkbox" name="enabled" checked /> Enabled</label>
+          <div class="modal-actions"><button type="button" class="secondary-button" data-close-modal>Cancel</button><button class="primary-button" type="submit">Save <span>→</span></button></div>
+        </form>
+      </div>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="/app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,13 @@
+[Unit]
+Description=Laravel Queue Worker - {{slug}}
+After=network.target
+
+[Service]
+User=www-data
+WorkingDirectory={{site_path}}/app
+ExecStart=/usr/bin/php{{php_version}} artisan queue:work --sleep=3 --tries=3
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

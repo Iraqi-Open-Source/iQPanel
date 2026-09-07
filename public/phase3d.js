@@ -19,7 +19,10 @@
     return payload;
   };
 
-  const escapeHtml = (value) => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const escapeHtml = (value) => {
+    if (window.IQPanelUI?.escapeHtml) return window.IQPanelUI.escapeHtml(value);
+    return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  };
 
   const pending = { retry: null };
 

@@ -149,7 +149,7 @@ Depends on: Phase 3 complete.
 - [x] Node version manager integration (`nvm`) per site
 - [x] Python multi-version via `pyenv` per site
 - [x] Automated end-to-end installer smoke on fresh Ubuntu VM (GitHub Actions)
-- [ ] Frontend modernization (component framework, design tokens)
+- [x] Frontend modernization (component framework, design tokens)
 
 ## Phase 3 feature foundations and workflows shipped
 

@@ -16,6 +16,8 @@ Open `http://localhost:4173`. Data lives under `data/`, generated configs under 
 npm test
 ```
 
+Dashboard UI uses layered design tokens (`public/tokens.css`), shared components (`public/components.js`), and a light/dark theme toggle in the top bar.
+
 ## Production layout
 
 The installer (`installer/install.sh`) targets Ubuntu 20.04, 22.04, and 24.04 (amd64 and arm64). It installs Nginx, Apache (disabled until a site selects it), PHP 7.4–8.4 via `ppa:ondrej/php`, Node via `nvm`, Python via `pyenv`, MySQL, PostgreSQL, Docker, Certbot, the root Agent, and the panel API bound to localhost.

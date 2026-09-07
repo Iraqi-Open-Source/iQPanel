@@ -15,8 +15,11 @@
     selectedFile: "",
   };
 
+  const UI = window.IQPanelUI;
+
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
+  const escapeHtml = UI.escapeHtml;
 
   const showToast = (message) => {
     const toast = $("#toast");
@@ -67,8 +70,7 @@
     $("#app-shell").hidden = false;
   };
 
-  const typeLabel = (type) => ({ php: "PHP / Laravel", node: "Node.js", python: "Python", static: "Static site" }[type] || type);
-  const logoClasses = ["logo-green", "logo-purple", "logo-orange", "logo-blue"];
+  const typeLabel = UI.typeLabel;
 
   const formatWhen = (value) => {
     if (!value) return "—";
@@ -83,35 +85,16 @@
     return date.toLocaleDateString();
   };
 
-  const escapeHtml = (value) => String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-
-  const siteLogo = (site, index) => {
-    const initials = (site.name || site.slug || "??").slice(0, 2).toUpperCase();
-    const cls = logoClasses[index % logoClasses.length];
-    return `<div class="site-logo ${cls}">${escapeHtml(initials)}</div>`;
-  };
-
-  const siteRowMarkup = (site, index) => {
-    const repo = site.repo_url || site.repo || "";
-    const port = site.port ? ":" + site.port : "";
-    const status = site.status || "online";
-    return `<div class="site-row" data-site-slug="${escapeHtml(site.slug)}">${siteLogo(site, index)}<div class="site-meta"><strong>${escapeHtml(site.name)}</strong><small>${escapeHtml(typeLabel(site.type))} · <code>${escapeHtml(repo)}</code></small></div><span class="site-port">${escapeHtml(String(port))}</span><span class="status">${escapeHtml(status)}</span></div>`;
-  };
-
-  const siteCardMarkup = (site, index) => {
-    const repo = site.repo_url || site.repo || "";
-    const port = site.port ? String(site.port) : "—";
-    const status = site.status || "online";
-    return `<article class="full-site-card" data-site-slug="${escapeHtml(site.slug)}" data-site-name="${escapeHtml((site.name || "").toLowerCase())}" data-status="${escapeHtml(status)}" data-config="${escapeHtml(site.config_status || "")}"><div class="site-card-top">${siteLogo(site, index)}<div class="site-meta"><strong>${escapeHtml(site.name)}</strong><small>${escapeHtml(typeLabel(site.type))}</small></div><span class="status">${escapeHtml(status)}</span></div><div class="site-card-details"><div><span>Repository</span><b>${escapeHtml(repo)}</b></div><div><span>Port</span><b>${escapeHtml(port)}</b></div></div><div class="site-card-actions"><button type="button" class="secondary-button" data-site-action="deploy" data-slug="${escapeHtml(site.slug)}">Deploy</button><button type="button" class="secondary-button" data-site-action="backup" data-slug="${escapeHtml(site.slug)}">Backup</button><button type="button" class="secondary-button" data-site-action="config" data-slug="${escapeHtml(site.slug)}">Apply config</button><button type="button" class="secondary-button" data-site-action="delete" data-slug="${escapeHtml(site.slug)}">Delete</button></div></article>`;
-  };
+  const siteRowMarkup = (site, index) => UI.siteRow(site, index);
+  const siteCardMarkup = (site, index) => UI.siteCard(site, index);
 
   const renderSites = (sites) => {
     state.sites = sites;
     const list = $("#site-list");
     const full = $("#full-site-list");
     if (!sites.length) {
-      list.innerHTML = '<p class="empty-inline">No sites yet. Create one to get started.</p>';
-      full.innerHTML = '<p class="empty-inline">No sites yet.</p>';
+      list.innerHTML = UI.emptyInline("No sites yet. Create one to get started.");
+      full.innerHTML = UI.emptyInline("No sites yet.");
       $("#nav-sites-count").textContent = "";
       return;
     }

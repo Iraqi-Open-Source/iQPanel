@@ -8,6 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/tokens.css" />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
@@ -65,7 +66,7 @@
       <main class="main-content">
         <header class="topbar">
           <div class="breadcrumbs"><span>Workspace</span><span>/</span><strong id="breadcrumb">Overview</strong></div>
-          <div class="topbar-actions"><div class="secure-chip"><span class="lock">⌁</span> Local agent secured</div><button class="icon-button notification" aria-label="Notifications">♢<i></i></button><button class="avatar top-avatar" type="button" id="logout-button-top" aria-label="Sign out">AD</button></div>
+          <div class="topbar-actions"><div class="secure-chip"><span class="lock">⌁</span> Local agent secured</div><button class="icon-button" type="button" id="theme-toggle" aria-label="Switch to light theme" title="Toggle theme">◐</button><button class="icon-button notification" aria-label="Notifications">♢<i></i></button><button class="avatar top-avatar" type="button" id="logout-button-top" aria-label="Sign out">AD</button></div>
         </header>
 
         <div class="page-wrap">
@@ -302,6 +303,7 @@
       </div>
     </div>
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="/components.js"></script>
     <script src="/app.js"></script>
   </body>
 </html>

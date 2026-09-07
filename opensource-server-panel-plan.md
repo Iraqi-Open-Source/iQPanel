@@ -628,11 +628,9 @@ Phase 3 is split into six slices. Each slice has explicit dependencies; do not m
 5. Python runtimes via `installer/pyenv.sh` (`PANEL_PYENV_ROOT`, per-site `venv` creation on deploy).
 6. GitHub Actions CI matrix on `ubuntu-22.04`, `ubuntu-24.04`, and `ubuntu-24.04-arm` plus installer smoke checks.
 
-**Remaining:**
+**Remaining:** none — Phase 4 complete.
 
-- Frontend modernization (component framework, design tokens).
-
-**Acceptance:** installer `verify.sh` and CI smoke pass on supported Ubuntu targets; `/api/runtimes` reports configured and discovered PHP/Node/Python versions.
+**Acceptance:** installer `verify.sh` and CI smoke pass on supported Ubuntu targets; `/api/runtimes` reports configured and discovered PHP/Node/Python versions; dashboard uses shared design tokens and `public/components.js`.
 
 ### Phase 3 dependency graph
 

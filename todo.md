@@ -142,13 +142,13 @@ Depends on: 3B (deploy UI), 3C (ownership-aware file ops), 3D (auth for sensitiv
 
 Depends on: Phase 3 complete.
 
-- [ ] Choose and publish license (MIT vs AGPL-3.0)
-- [ ] Ubuntu 20.04 installer support (validate package sets)
-- [ ] arm64 CI smoke on Ubuntu 22.04/24.04
-- [ ] Broader PHP runtime support (7.4–8.4 via `ppa:ondrej/php`)
-- [ ] Node version manager integration (`nvm` or `n`) per site
-- [ ] Python multi-version via `pyenv` per site
-- [ ] Automated end-to-end installer smoke on fresh Ubuntu VM (GitHub Actions)
+- [x] Choose and publish license (MIT)
+- [x] Ubuntu 20.04 installer support (validate package sets)
+- [x] arm64 CI smoke on Ubuntu 22.04/24.04
+- [x] Broader PHP runtime support (7.4–8.4 via `ppa:ondrej/php`)
+- [x] Node version manager integration (`nvm`) per site
+- [x] Python multi-version via `pyenv` per site
+- [x] Automated end-to-end installer smoke on fresh Ubuntu VM (GitHub Actions)
 - [ ] Frontend modernization (component framework, design tokens)
 
 ## Phase 3 feature foundations and workflows shipped
@@ -164,7 +164,7 @@ Do not mark a Phase 3 slice complete until it has API, safe privileged implement
 
 ## Manual verification (Ubuntu VM)
 
-1. Run `sudo bash installer/install.sh` on Ubuntu 22.04 or 24.04
+1. Run `sudo bash installer/install.sh` on Ubuntu 20.04, 22.04, or 24.04
 2. Tunnel: `ssh -L 4173:127.0.0.1:4173 user@server`
 3. Sign in with the one-time admin password
 4. Create a PHP or Apache site, add deploy key to GitHub, clone, apply config

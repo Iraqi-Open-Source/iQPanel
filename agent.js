@@ -3,6 +3,7 @@ const path = require('node:path');
 const { execFileSync, spawn } = require('node:child_process');
 const { root } = require('./db');
 const paths = require('./paths');
+const runtimePaths = require('./runtime-paths');
 const { renderTemplate } = require('./template');
 const { nginxListenPort, upstreamPort } = require('./ports');
 const { applySiteOwnership, removeSiteUser, siteUserName } = require('./site-user');
@@ -330,19 +331,40 @@ async function createBackup(site) {
   return { path: archivePath, size: fs.statSync(archivePath).size };
 }
 
+async function ensureSiteVenv(site) {
+  const base = sitePath(site.slug);
+  const venvPath = path.join(base, 'venv');
+  const python = runtimePaths.pythonBinary(site.python_version || site.runtime_version || '3.12');
+  if (!fs.existsSync(path.join(venvPath, 'bin', 'python3'))) {
+    await command(python, ['-m', 'venv', venvPath], { cwd: base });
+  }
+  applySiteOwnership(site.slug, base);
+  return venvPath;
+}
+
 const allowedInstallCommands = {
   php: [['composer', ['install', '--no-dev', '--optimize-autoloader']], ['php', ['artisan', 'optimize:clear']]],
   node: [['npm', ['ci']], ['npm', ['run', 'build']]],
-  python: [['python3', ['-m', 'pip', 'install', '-r', 'requirements.txt']]],
+  python: [],
   static: [['npm', ['ci']], ['npm', ['run', 'build']]],
 };
 
 async function installSite(site) {
   const output = [];
   const app = path.join(sitePath(site.slug), 'app');
-  for (const [program, args] of allowedInstallCommands[site.type] || []) {
-    const result = await command(program, args, { cwd: app });
-    output.push(`${program} ${args.join(' ')}\n${result.stdout}${result.stderr}`);
+  if (site.type === 'python') {
+    const venvPath = await ensureSiteVenv(site);
+    const pip = path.join(venvPath, 'bin', 'pip');
+    const requirements = path.join(app, 'requirements.txt');
+    if (fs.existsSync(requirements)) {
+      const result = await command(pip, ['install', '-r', 'requirements.txt'], { cwd: app });
+      output.push(`${pip} install -r requirements.txt\n${result.stdout}${result.stderr}`);
+    }
+  } else {
+    for (const [program, args] of allowedInstallCommands[site.type] || []) {
+      const result = await command(program, args, { cwd: app });
+      output.push(`${program} ${args.join(' ')}\n${result.stdout}${result.stderr}`);
+    }
   }
   applySiteOwnership(site.slug, sitePath(site.slug));
   return output.join('\n');

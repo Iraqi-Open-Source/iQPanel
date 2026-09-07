@@ -5,9 +5,9 @@ After=network.target
 [Service]
 User={{run_as_user}}
 WorkingDirectory={{site_path}}/app
-Environment=PATH=/home/panel/.nvm/versions/node/v{{node_version}}/bin:/usr/bin
+Environment=PATH={{nvm_home}}/versions/node/v{{node_version}}/bin:/usr/bin
 Environment=PORT={{port}}
-ExecStart=/home/panel/.nvm/versions/node/v{{node_version}}/bin/node dist/main.js
+ExecStart={{nvm_home}}/versions/node/v{{node_version}}/bin/node dist/main.js
 Restart=always
 RestartSec=5
 

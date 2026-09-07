@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            arch: amd64
+          - os: ubuntu-24.04
+            arch: amd64
+          - os: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Run automated tests
+        run: npm test
+
+  installer:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate installer scripts
+        run: |
+          bash -n installer/install.sh
+          bash -n installer/verify.sh
+          bash -n installer/php-versions.sh
+          bash -n installer/nvm.sh
+          bash -n installer/pyenv.sh
+      - name: Start panel and run smoke checks
+        run: |
+          npm start &
+          for attempt in $(seq 1 40); do
+            curl -fsS http://127.0.0.1:4173/api/session >/dev/null && break
+            sleep 0.5
+          done
+          IQ_PANEL_URL=http://127.0.0.1:4173 bash installer/verify.sh

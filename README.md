@@ -2,6 +2,8 @@
 
 Open-source server control panel for Ubuntu. The unprivileged web API talks to a root Agent over a Unix socket.
 
+Licensed under the [MIT License](LICENSE).
+
 ## Run locally
 
 ```bash
@@ -16,7 +18,7 @@ npm test
 
 ## Production layout
 
-The installer (`installer/install.sh`) targets Ubuntu 22.04/24.04. It installs Nginx, Apache (disabled until a site selects it), PHP 8.2/8.3-FPM, MySQL, PostgreSQL, Docker, Certbot, the root Agent, and the panel API bound to localhost.
+The installer (`installer/install.sh`) targets Ubuntu 20.04, 22.04, and 24.04 (amd64 and arm64). It installs Nginx, Apache (disabled until a site selects it), PHP 7.4–8.4 via `ppa:ondrej/php`, Node via `nvm`, Python via `pyenv`, MySQL, PostgreSQL, Docker, Certbot, the root Agent, and the panel API bound to localhost.
 
 ```text
 /opt/iqpanel              application
@@ -40,7 +42,7 @@ Then open `http://127.0.0.1:4173` and sign in with the one-time password printed
 
 - Sites CRUD with Nginx, Apache, or OpenLiteSpeed vhosts, per-site Unix users (`iqpanel-<slug>`), deploy keys, and Git clone/pull jobs
 - PHP, Node, Python, static, and Docker Compose site types
-- Selectable PHP/Node runtime versions (`PANEL_PHP_VERSIONS`, `PANEL_NODE_VERSIONS`)
+- Selectable PHP/Node/Python runtime versions (`PANEL_PHP_VERSIONS`, `PANEL_NODE_VERSIONS`, `PANEL_PYTHON_VERSIONS`)
 - MySQL, MariaDB, and PostgreSQL create/attach with honest provisioning status
 - Local backups plus FTP and Telegram destinations (Telegram splits at 50MB)
 - Certbot and UFW actions generated locally, applied on the server when `PANEL_APPLY_SYSTEM=1`

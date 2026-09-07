@@ -7,13 +7,13 @@ if [[ "$(id -u)" -ne 0 ]]; then
 fi
 
 if [[ ! -f /etc/os-release ]] || ! . /etc/os-release || [[ "${ID:-}" != "ubuntu" ]]; then
-  echo "iQPanel Phase 1 supports Ubuntu only." >&2
+  echo "iQPanel supports Ubuntu only." >&2
   exit 1
 fi
 
 case "${VERSION_ID:-}" in
-  22.04|24.04) ;;
-  *) echo "Supported Ubuntu versions: 22.04 and 24.04" >&2; exit 1 ;;
+  20.04|22.04|24.04) ;;
+  *) echo "Supported Ubuntu versions: 20.04, 22.04, and 24.04" >&2; exit 1 ;;
 esac
 
 export DEBIAN_FRONTEND=noninteractive
@@ -32,9 +32,14 @@ case "${STACK}" in
   *) echo "Supported stacks: all, lnmp, lamp, llmp" >&2; exit 1 ;;
 esac
 
+COMPOSE_PACKAGE=(docker-compose-v2)
+if [[ "${VERSION_ID}" == "20.04" ]]; then
+  COMPOSE_PACKAGE=(docker-compose)
+fi
+
 apt-get update
 apt-get install -y curl git unzip tar ca-certificates sqlite3 openssh-client software-properties-common \
-  certbot python3 python3-venv python3-pip ufw composer docker.io docker-compose-v2 "${WEB_PACKAGES[@]}" "${DB_PACKAGES[@]}"
+  certbot python3 python3-venv python3-pip ufw composer docker.io "${COMPOSE_PACKAGE[@]}" "${WEB_PACKAGES[@]}" "${DB_PACKAGES[@]}"
 
 if [[ "${PANEL_INSTALL_OPTIONAL:-0}" == "1" ]]; then
   apt-get install -y fail2ban postfix dovecot-core phpmyadmin
@@ -42,16 +47,25 @@ fi
 
 add-apt-repository -y ppa:ondrej/php
 apt-get update
-apt-get install -y php8.2-cli php8.2-fpm php8.2-mysql php8.2-pgsql php8.2-mbstring php8.2-xml php8.2-curl \
-  php8.3-cli php8.3-fpm php8.3-mysql php8.3-pgsql php8.3-mbstring php8.3-xml php8.3-curl
+bash installer/php-versions.sh
 
 if ! command -v node >/dev/null 2>&1 || [[ "$(node -v | sed 's/v//' | cut -d. -f1)" -lt 20 ]]; then
   curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
   apt-get install -y nodejs
 fi
 
+export PANEL_HOME=/var/lib/iqpanel
+export PANEL_NVM_HOME="${PANEL_HOME}/.nvm"
+export PANEL_PYENV_ROOT="${PANEL_HOME}/.pyenv"
+export PANEL_PHP_VERSIONS="${PANEL_PHP_VERSIONS:-7.4,8.2,8.3,8.4}"
+export PANEL_NODE_VERSIONS="${PANEL_NODE_VERSIONS:-18,20,22}"
+export PANEL_PYTHON_VERSIONS="${PANEL_PYTHON_VERSIONS:-3.10.14,3.11.9,3.12.4}"
+bash installer/nvm.sh
+bash installer/pyenv.sh
+
+DEFAULT_PHP="${PANEL_PHP_VERSION:-8.3}"
 systemctl disable --now apache2 || true
-systemctl enable --now nginx php8.3-fpm mysql postgresql || true
+systemctl enable --now nginx "php${DEFAULT_PHP}-fpm" mysql postgresql || true
 
 if command -v ufw >/dev/null 2>&1; then
   ufw --force default deny incoming
@@ -90,9 +104,12 @@ PANEL_AGENT_LISTEN_HOST=0.0.0.0
 PANEL_DATA_ROOT=/var/lib/iqpanel
 PANEL_SITES_ROOT=/var/www/sites
 PANEL_APPLY_SYSTEM=1
-PANEL_PHP_VERSION=8.3
-PANEL_PHP_VERSIONS=8.2,8.3
-PANEL_NODE_VERSIONS=20
+PANEL_PHP_VERSION=${DEFAULT_PHP}
+PANEL_PHP_VERSIONS=${PANEL_PHP_VERSIONS}
+PANEL_NODE_VERSIONS=${PANEL_NODE_VERSIONS}
+PANEL_PYTHON_VERSIONS=${PANEL_PYTHON_VERSIONS}
+PANEL_NVM_HOME=${PANEL_NVM_HOME}
+PANEL_PYENV_ROOT=${PANEL_PYENV_ROOT}
 PANEL_STACK=${STACK}
 EOF
 chmod 0640 /etc/panel-agent/env

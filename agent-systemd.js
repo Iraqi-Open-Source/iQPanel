@@ -2,6 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { renderTemplate } = require('./template');
 const paths = require('./paths');
+const runtimePaths = require('./runtime-paths');
 const apply = require('./agent-apply');
 
 const systemdTemplates = {
@@ -23,7 +24,8 @@ function writeSystemdTemplate(site, template, sitePath) {
   fs.writeFileSync(filePath, renderTemplate(relative, {
     slug: site.slug,
     php_version: site.runtime_version || paths.phpVersion,
-    node_version: site.node_version || site.runtime_version || '20',
+    node_version: runtimePaths.resolveNodeVersion(site.node_version || site.runtime_version || '20'),
+    nvm_home: runtimePaths.nvmHome(),
     port: String(site.app_port || site.port || 8000),
     run_as_user: site.run_as_user || require('./site-user').siteUserName(site.slug),
     site_path: sitePath(site.slug),

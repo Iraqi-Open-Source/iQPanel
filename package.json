@@ -1,6 +1,7 @@
 {
   "name": "iqpanel",
   "version": "0.1.0",
+  "license": "MIT",
   "private": true,
   "description": "Open-source Ubuntu server control panel MVP",
   "type": "commonjs",

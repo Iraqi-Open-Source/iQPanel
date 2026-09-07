@@ -619,15 +619,20 @@ Phase 3 is split into six slices. Each slice has explicit dependencies; do not m
 
 **Goal:** close gaps between the original vision (section 2) and shipped scope, and prepare for a public release.
 
-**Planned:**
+**Implemented:**
 
-1. License decision and `LICENSE` file (MIT vs AGPL-3.0).
-2. Ubuntu 20.04 and arm64 installer validation.
-3. Broader runtime support: PHP 7.4–8.4, Node via `nvm`/`n`, Python via `pyenv`.
-4. CI end-to-end installer smoke on fresh Ubuntu VMs.
-5. Optional frontend modernization (component framework).
+1. MIT `LICENSE` published.
+2. Ubuntu 20.04, 22.04, and 24.04 installer support (with compose package fallback on 20.04).
+3. PHP 7.4–8.4 installed via `installer/php-versions.sh` and `ppa:ondrej/php`.
+4. Node runtimes via `installer/nvm.sh` (`PANEL_NVM_HOME`, systemd templates use `{{nvm_home}}`).
+5. Python runtimes via `installer/pyenv.sh` (`PANEL_PYENV_ROOT`, per-site `venv` creation on deploy).
+6. GitHub Actions CI matrix on `ubuntu-22.04`, `ubuntu-24.04`, and `ubuntu-24.04-arm` plus installer smoke checks.
 
-**Acceptance:** installer `verify.sh` and CI smoke pass on all supported Ubuntu targets; runtime inventory matches documented version ranges.
+**Remaining:**
+
+- Frontend modernization (component framework, design tokens).
+
+**Acceptance:** installer `verify.sh` and CI smoke pass on supported Ubuntu targets; `/api/runtimes` reports configured and discovered PHP/Node/Python versions.
 
 ### Phase 3 dependency graph
 

@@ -20,25 +20,79 @@ Dashboard UI uses layered design tokens (`public/tokens.css`), shared components
 
 ## Production install
 
-The installer (`installer/install.sh`) targets Ubuntu 20.04, 22.04, and 24.04 (amd64 and arm64). By default it is **minimal**: Node.js 20, the panel API, and the root Agent. It does not preinstall Nginx, PHP, MySQL, Docker, or other stack packages.
+Supported hosts: Ubuntu **20.04**, **22.04**, and **24.04** (amd64 or arm64), with SSH and sudo.
 
-After install, finish setup in the Dashboard:
+The installer is **minimal by default**: Node.js 20, the panel API, and the root Agent. Nginx, PHP, MySQL, Docker, and similar packages are installed later from the Dashboard.
 
-- Services view lists every systemd unit (start / stop / restart / enable / disable)
-- Install Nginx, Apache, MySQL, MariaDB, PostgreSQL, Redis, Docker, and other allowlisted packages
-- Install a custom PHP version (7.4–8.4 via `ppa:ondrej/php`) with FPM plus cli, mysql, pgsql, mbstring, xml, curl, gd, zip, bcmath, and intl
+### 1. Get the source on the server
+
+With Git:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y git
+git clone https://github.com/Iraqi-Open-Source/iQPanel.git
+cd iQPanel
+```
+
+Without Git (tarball):
+
+```bash
+sudo apt-get update
+sudo apt-get install -y curl tar
+curl -fsSL https://github.com/Iraqi-Open-Source/iQPanel/archive/refs/heads/main.tar.gz -o iqpanel.tar.gz
+tar -xzf iqpanel.tar.gz
+cd iQPanel-main
+```
+
+Do not pipe `install.sh` from the network. The script copies the current directory into `/opt/iqpanel`.
+
+### 2. Run the installer
+
+Minimal (recommended):
 
 ```bash
 sudo bash installer/install.sh
 ```
 
-To restore the old full-stack bootstrap (web server, databases, PHP, nvm, pyenv, Docker, Certbot, UFW):
+Save the **one-time admin password** printed at the end.
+
+Optional full stack (packages now, not from the Dashboard):
 
 ```bash
-PANEL_FULL=1 sudo bash installer/install.sh
-# or a stack preset:
 sudo bash installer/install.sh --stack=lnmp
 ```
+
+| Flag | Web | Database |
+|---|---|---|
+| `--stack=lnmp` | Nginx | MySQL |
+| `--stack=lamp` | Apache | MySQL |
+| `--stack=llmp` | Nginx | MariaDB |
+| `--stack=all` | Nginx + Apache (Apache then disabled) | MySQL + PostgreSQL |
+
+`--stack` also installs PHP 7.4–8.4, nvm, pyenv, Docker, Certbot, Composer, and enables UFW (SSH, 80, 443). Same as `PANEL_FULL=1` (defaults to `--stack=all`).
+
+### 3. Open the dashboard
+
+The panel binds to **localhost only** (`127.0.0.1:4173`). From your machine:
+
+```bash
+ssh -L 4173:127.0.0.1:4173 user@your-server
+```
+
+Open `http://127.0.0.1:4173` and sign in with the installer password. Enable 2FA after login.
+
+### 4. Finish setup in the Dashboard
+
+After a minimal install:
+
+- Install Nginx, Apache, MySQL, MariaDB, PostgreSQL, Redis, Docker, and other allowlisted packages
+- Install PHP 7.4–8.4 (FPM plus cli, mysql, pgsql, mbstring, xml, curl, gd, zip, bcmath, intl)
+- Start, stop, restart, enable, or disable systemd units in Services
+
+`PANEL_APPLY_SYSTEM=1` is set by the installer so those Dashboard actions run on the host. Local `npm start` leaves that off and writes files under `data/generated/`.
+
+### Layout
 
 ```text
 /opt/iqpanel              application
@@ -48,15 +102,7 @@ sudo bash installer/install.sh --stack=lnmp
 /etc/panel-agent/env      secret key, Agent token, admin password hash
 ```
 
-`PANEL_APPLY_SYSTEM=1` is set by the installer so Dashboard-triggered `apt-get` and systemd actions run on the host. Local `npm start` keeps this off and writes files under `data/generated/`.
-
-Access the dashboard with an SSH tunnel:
-
-```bash
-ssh -L 4173:127.0.0.1:4173 user@your-server
-```
-
-Then open `http://127.0.0.1:4173` and sign in with the one-time password printed by the installer. From there you can install PHP versions and services without using the VPS terminal.
+Keep `PANEL_BIND=127.0.0.1`. Do not expose port 4173 or Agent port 4174 on the public internet. Re-running the installer regenerates secrets in `/etc/panel-agent/env`.
 
 ## Features
 

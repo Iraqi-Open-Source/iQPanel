@@ -254,6 +254,9 @@ EOF
 chmod 0640 /etc/panel-agent/env
 chown root:panel /etc/panel-agent/env
 
+PANEL_DATA_ROOT=/var/lib/iqpanel PANEL_ADMIN_PASSWORD_HASH="${ADMIN_HASH}" \
+  node "${APP_ROOT}/installer/reset-admin-password.js"
+
 install -m 0644 "${SOURCE_DIR}/installer/iqpanel.service" /etc/systemd/system/iqpanel.service
 install -m 0644 "${SOURCE_DIR}/installer/iqpanel-agent.service" /etc/systemd/system/iqpanel-agent.service
 systemctl daemon-reload

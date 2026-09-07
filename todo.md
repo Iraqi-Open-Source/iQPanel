@@ -136,6 +136,20 @@ Depends on: 3B (deploy UI), 3C (ownership-aware file ops), 3D (auth for sensitiv
 - [x] Alert delivery worker (metric poll → `alert_events` → Telegram/Discord)
 - [x] Alert deduplication cooldown per channel
 - [x] Tests: upload traversal, WP install rollback, alert dedup
+- [x] Dedicated API tests (`tests/phase3e-integrations.test.js`, `tests/phase3f-dashboard.test.js`)
+
+## Phase 4 — Platform hardening and release prep
+
+Depends on: Phase 3 complete.
+
+- [ ] Choose and publish license (MIT vs AGPL-3.0)
+- [ ] Ubuntu 20.04 installer support (validate package sets)
+- [ ] arm64 CI smoke on Ubuntu 22.04/24.04
+- [ ] Broader PHP runtime support (7.4–8.4 via `ppa:ondrej/php`)
+- [ ] Node version manager integration (`nvm` or `n`) per site
+- [ ] Python multi-version via `pyenv` per site
+- [ ] Automated end-to-end installer smoke on fresh Ubuntu VM (GitHub Actions)
+- [ ] Frontend modernization (component framework, design tokens)
 
 ## Phase 3 feature foundations and workflows shipped
 

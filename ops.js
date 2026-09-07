@@ -23,6 +23,7 @@ const integrationActions = {
   swap: (action, size) => integrations.swap(action, size, base.command),
   extendDisk: (device, mode, confirm) => integrations.extendDisk(device, mode, confirm, base.command),
   manageAuthorizedKey: integrations.manageAuthorizedKey,
+  listAuthorizedKeys: integrations.listAuthorizedKeys,
   configureMail: (domain) => integrations.configureMail(domain, base.command),
   mailStatus: () => integrations.mailStatus(base.command),
   installPhpMyAdmin: (domain) => integrations.installPhpMyAdmin(domain, base.command),

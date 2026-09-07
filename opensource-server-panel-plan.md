@@ -606,6 +606,29 @@ Phase 3 is split into six slices. Each slice has explicit dependencies; do not m
 
 **Acceptance:** an admin can manage site files and WordPress from the browser without curl; threshold breaches produce at most one notification per channel per cooldown period.
 
+#### Phase 3 test coverage
+
+- `tests/phase3a-remote.test.js` — remote Agent routing
+- `tests/phase3b-deploy.test.js` — webhooks and rollback
+- `tests/phase3c-users.test.js` — per-site OS users
+- `tests/phase3d-auth.test.js` — team auth, 2FA, audit
+- `tests/phase3e-integrations.test.js` — host integration APIs
+- `tests/phase3f-dashboard.test.js` — file manager, alerts, packages, WordPress APIs
+
+### Phase 4 — Platform hardening and release prep
+
+**Goal:** close gaps between the original vision (section 2) and shipped scope, and prepare for a public release.
+
+**Planned:**
+
+1. License decision and `LICENSE` file (MIT vs AGPL-3.0).
+2. Ubuntu 20.04 and arm64 installer validation.
+3. Broader runtime support: PHP 7.4–8.4, Node via `nvm`/`n`, Python via `pyenv`.
+4. CI end-to-end installer smoke on fresh Ubuntu VMs.
+5. Optional frontend modernization (component framework).
+
+**Acceptance:** installer `verify.sh` and CI smoke pass on all supported Ubuntu targets; runtime inventory matches documented version ranges.
+
 ### Phase 3 dependency graph
 
 ```mermaid

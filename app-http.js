@@ -3,7 +3,7 @@ const worker = require('./worker');
 const { handleRequest } = require('./http-routes');
 const alerts = require('./alerts');
 
-const port = Number(process.env.PORT || 4173);
+const port = Number(process.env.PANEL_PORT || process.env.PORT || 4173);
 const bind = process.env.PANEL_BIND || '127.0.0.1';
 
 const server = http.createServer((request, response) => {

@@ -68,16 +68,56 @@ cleanup_fetch() {
 
 FULL=0
 STACK="${PANEL_STACK:-}"
+EXPOSE_DASHBOARD="${PANEL_EXPOSE_DASHBOARD:-0}"
+DASHBOARD_BIND="${PANEL_BIND:-127.0.0.1}"
+DASHBOARD_PORT="${PANEL_PORT:-4173}"
 if [[ "${PANEL_FULL:-0}" == "1" ]]; then
   FULL=1
   STACK="${STACK:-all}"
 fi
-if [[ "${1:-}" == --stack=* ]]; then
-  FULL=1
-  STACK="${1#--stack=}"
-elif [[ "${1:-}" == "--stack" ]]; then
-  FULL=1
-  STACK="${2:-all}"
+while [[ "$#" -gt 0 ]]; do
+  case "$1" in
+    --stack=*)
+      FULL=1
+      STACK="${1#--stack=}"
+      shift
+      ;;
+    --stack)
+      FULL=1
+      STACK="${2:-all}"
+      if [[ "$#" -gt 1 ]]; then shift 2; else shift; fi
+      ;;
+    --expose-dashboard)
+      EXPOSE_DASHBOARD=1
+      DASHBOARD_BIND=0.0.0.0
+      shift
+      ;;
+    --dashboard-port=*)
+      DASHBOARD_PORT="${1#--dashboard-port=}"
+      shift
+      ;;
+    --dashboard-port)
+      DASHBOARD_PORT="${2:-}"
+      if [[ "$#" -gt 1 ]]; then shift 2; else shift; fi
+      ;;
+    *)
+      echo "Unknown option: $1" >&2
+      echo "Usage: $0 [--stack=all|lnmp|lamp|llmp] [--expose-dashboard] [--dashboard-port=PORT]" >&2
+      exit 1
+      ;;
+  esac
+done
+
+if [[ ! "${DASHBOARD_PORT}" =~ ^[0-9]+$ ]] || (( DASHBOARD_PORT < 1 || DASHBOARD_PORT > 65535 )); then
+  echo "Dashboard port must be a number between 1 and 65535." >&2
+  exit 1
+fi
+if [[ ! "${DASHBOARD_BIND}" =~ ^[A-Za-z0-9_.:-]+$ ]]; then
+  echo "Dashboard bind address contains unsupported characters." >&2
+  exit 1
+fi
+if [[ "${EXPOSE_DASHBOARD}" == "1" ]]; then
+  DASHBOARD_BIND=0.0.0.0
 fi
 if [[ "${FULL}" == "1" && -z "${STACK}" ]]; then
   STACK=all
@@ -144,6 +184,9 @@ if [[ "${FULL}" == "1" ]]; then
     ufw allow OpenSSH
     ufw allow 80/tcp
     ufw allow 443/tcp
+    if [[ "${EXPOSE_DASHBOARD}" == "1" ]]; then
+      ufw allow "${DASHBOARD_PORT}/tcp"
+    fi
     ufw --force enable
   fi
 else
@@ -183,10 +226,11 @@ PANEL_AGENT_TOKEN=${AGENT_TOKEN}
 PANEL_ADMIN_PASSWORD_HASH=${ADMIN_HASH}
 PANEL_UPDATE_REPO=${PANEL_REPO}
 PANEL_UPDATE_REF=${PANEL_REF}
-PANEL_BIND=127.0.0.1
+PANEL_BIND=${DASHBOARD_BIND}
+PANEL_PORT=${DASHBOARD_PORT}
 PANEL_AGENT_SOCKET=/run/iqpanel-agent.sock
-PANEL_AGENT_LISTEN_PORT=4174
-PANEL_AGENT_LISTEN_HOST=0.0.0.0
+PANEL_AGENT_LISTEN_PORT=${PANEL_AGENT_LISTEN_PORT:-4174}
+PANEL_AGENT_LISTEN_HOST=${PANEL_AGENT_LISTEN_HOST:-127.0.0.1}
 PANEL_DATA_ROOT=/var/lib/iqpanel
 PANEL_SITES_ROOT=/var/www/sites
 PANEL_APPLY_SYSTEM=1
@@ -217,8 +261,13 @@ systemctl enable --now iqpanel-agent.service
 chown -R panel:panel /var/lib/iqpanel /var/www/sites /var/log/panel /var/backups/panel
 systemctl enable --now iqpanel.service
 
-echo "iQPanel is running on http://127.0.0.1:4173 (localhost only)."
-echo "Access from your machine with: ssh -L 4173:127.0.0.1:4173 user@this-server"
+if [[ "${EXPOSE_DASHBOARD}" == "1" ]]; then
+  echo "iQPanel is running on http://<server-ip>:${DASHBOARD_PORT} (public dashboard enabled)."
+  echo "Direct public access is HTTP-only; use HTTPS through a reverse proxy for internet-facing deployments."
+else
+  echo "iQPanel is running on http://127.0.0.1:${DASHBOARD_PORT} (localhost only)."
+  echo "Access from your machine with: ssh -L ${DASHBOARD_PORT}:127.0.0.1:${DASHBOARD_PORT} user@this-server"
+fi
 echo "One-time admin password: ${ADMIN_PASSWORD}"
 echo "Store this password now. It is not written to disk in plaintext."
 if [[ "${FULL}" != "1" ]]; then

@@ -40,6 +40,12 @@ Optional full stack in the same command:
 curl -fsSL https://raw.githubusercontent.com/Iraqi-Open-Source/iQPanel/main/installer/install.sh | sudo bash -s -- --stack=lnmp
 ```
 
+To expose the dashboard publicly on a custom port without cloning the repository:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Iraqi-Open-Source/iQPanel/main/installer/install.sh | sudo bash -s -- --expose-dashboard --dashboard-port=8080
+```
+
 ### 2. Install from a local checkout (optional)
 
 ```bash
@@ -54,6 +60,18 @@ Or with a stack:
 sudo bash installer/install.sh --stack=lnmp
 ```
 
+The dashboard is localhost-only by default. To expose it directly on the server's IP, opt in during installation:
+
+```bash
+sudo bash installer/install.sh --expose-dashboard
+```
+
+The public dashboard listens on port `4173` by default. Change it with `--dashboard-port=PORT`:
+
+```bash
+sudo bash installer/install.sh --expose-dashboard --dashboard-port=8080
+```
+
 | Flag | Web | Database |
 |---|---|---|
 | `--stack=lnmp` | Nginx | MySQL |
@@ -65,13 +83,15 @@ sudo bash installer/install.sh --stack=lnmp
 
 ### 3. Open the dashboard
 
-The panel binds to **localhost only** (`127.0.0.1:4173`). From your machine:
+The panel binds to **localhost only** (`127.0.0.1:4173`) unless `--expose-dashboard` was used. From your machine:
 
 ```bash
 ssh -L 4173:127.0.0.1:4173 user@your-server
 ```
 
 Open `http://127.0.0.1:4173` and sign in with the installer password. Enable 2FA after login.
+
+With public exposure enabled, open `http://your-server-ip:4173` instead. Direct public exposure is HTTP-only; use an HTTPS reverse proxy for an internet-facing deployment.
 
 ### 4. Finish setup in the Dashboard
 
@@ -93,7 +113,7 @@ After a minimal install:
 /etc/panel-agent/env      secret key, Agent token, admin password hash
 ```
 
-Keep `PANEL_BIND=127.0.0.1`. Do not expose port 4173 or Agent port 4174 on the public internet. Re-running the installer regenerates secrets in `/etc/panel-agent/env`.
+Keep `PANEL_BIND=127.0.0.1` unless direct dashboard access is required. `PANEL_PORT` controls the dashboard port; both settings are stored in `/etc/panel-agent/env` and require restarting `iqpanel.service` after changes. The Agent TCP listener defaults to `127.0.0.1:4174` and should not be exposed publicly. Re-running the installer regenerates secrets in `/etc/panel-agent/env`.
 
 ## Features
 

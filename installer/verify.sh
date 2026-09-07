@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-BASE_URL="${IQ_PANEL_URL:-http://127.0.0.1:4173}"
+BASE_URL="${IQ_PANEL_URL:-http://127.0.0.1:${IQ_PANEL_PORT:-4173}}"
 PASS="${IQ_PANEL_PASSWORD:-}"
 
 echo "Checking iQPanel at ${BASE_URL}"

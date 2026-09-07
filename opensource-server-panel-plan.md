@@ -22,7 +22,7 @@ Comparable prior art (for reference, not code to copy): cPanel, Plesk, OpenPanel
 | Item | Support |
 |---|---|
 | OS | Ubuntu 20.04, 22.04, 24.04 LTS (amd64 & arm64) |
-| Web servers | Nginx, Apache2 (choose per site) |
+| Web servers | Nginx, Apache2, OpenLiteSpeed (choose per site) |
 | PHP | 7.4 – 8.4 via `ppa:ondrej/php`, multiple versions side-by-side with PHP-FPM pools |
 | Node | via `nvm` or `n`, multiple versions side-by-side |
 | Python | system + `pyenv` for multiple versions, `venv` per site |
@@ -103,7 +103,7 @@ Site
  ├─ deploy key (auto-generated per site)
  ├─ domain(s) OR local port
  ├─ ssl: none | letsencrypt
- ├─ webserver: nginx | apache
+ ├─ webserver: nginx | apache | openlitespeed
  ├─ runtime version: php X.Y / node X.Y / python X.Y
  ├─ php.ini overrides (per-site)
  ├─ database link(s): db engine, db name, db user
@@ -252,7 +252,7 @@ This maps directly to the steps you listed:
    - Panel generates deploy key → shows public key → user adds it to GitHub repo → confirms → panel clones.
 3. **Name:** optional, defaults to repo name (slugified).
 4. **Domain or IP+Port:** enter domain now, or skip and use `server_ip:port` for now, add domain later.
-5. **Web server:** Nginx or Apache.
+5. **Web server:** Nginx, Apache, or OpenLiteSpeed.
 6. **PHP version:** choose from installed versions (or trigger install of a new one), sets up dedicated FPM pool.
 7. **Custom php.ini:** optional textarea → merged into the pool's ini overrides (e.g. `upload_max_filesize`, `memory_limit`).
 8. **Node version:** optional, only if the project needs a build step (Vite/Mix).
@@ -522,7 +522,7 @@ Phase 3 is split into six slices. Each slice has explicit dependencies; do not m
 
 **Shipped foundation:** `deployments` table, clone/pull job queue, `activity_log` entries on deploy actions.
 
-**Work remaining:**
+**Implemented:**
 
 1. `POST /api/webhooks/github/:siteId` with HMAC signature verification and replay protection.
 2. Record `commit_sha` on every clone/pull job completion; store full deploy log in `deployments`.
@@ -539,7 +539,7 @@ Phase 3 is split into six slices. Each slice has explicit dependencies; do not m
 
 **Shipped foundation:** `run_as_user` on cron jobs; systemd/nginx/php-fpm templates already accept `{{run_as_user}}` (currently defaults to `www-data`).
 
-**Work remaining:**
+**Implemented:**
 
 1. Agent `createSite` provisions `iqpanel-<slug>` system user and group; site tree owned by that user.
 2. Nginx/Apache vhost `user`/`su` directives, PHP-FPM pool `user`/`group`, and systemd `User=` all set to the site user.
@@ -556,7 +556,7 @@ Phase 3 is split into six slices. Each slice has explicit dependencies; do not m
 
 **Shipped foundation:** optional `PANEL_ADMIN_PASSWORD_HASH`, rate-limited login, `activity_log` table (API writes today; no UI), terminal session start/end logging.
 
-**Work remaining:**
+**Implemented:**
 
 1. `users` table: `owner`, `admin`, `operator`, `readonly` roles; bcrypt password hashes.
 2. TOTP 2FA enrollment, backup codes, and verify-on-login flow.
@@ -596,7 +596,7 @@ Phase 3 is split into six slices. Each slice has explicit dependencies; do not m
 
 **Shipped foundation:** secure file API (`/api/sites/:slug/files`), WordPress WP-CLI API (`/api/sites/:slug/wordpress`), alert thresholds + encrypted Discord webhook in settings, `alert_events` table.
 
-**Work remaining:**
+**Implemented:**
 
 1. **File manager UI** — tree browser, edit, upload, download, rename, and delete with site-root confinement.
 2. **WordPress UI** — one-click install, staging clone, backup/restore, plugin/theme listing, and activation controls.
@@ -653,7 +653,7 @@ Maps advertised WPanel capabilities to iQPanel phase slices. Do not mark a row c
 
 | WPanel capability | Phase | Status |
 |---|---|---|
-| Site CRUD, Git deploy, Nginx/Apache, PHP/Node/Python/Docker | 1–2 | shipped |
+| Site CRUD, Git deploy, Nginx/Apache/OpenLiteSpeed, PHP/Node/Python/Docker | 1–2/3E | shipped |
 | MySQL/MariaDB/PostgreSQL, backups (local/FTP/Telegram) | 1–2 | shipped |
 | Docker, cron, systemd templates, web terminal | 2 | shipped |
 | Certbot, UFW, multi-server registry | 2 | shipped |

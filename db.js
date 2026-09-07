@@ -93,6 +93,7 @@ ensureColumn('sites', 'backup_keep_days', 'INTEGER NOT NULL DEFAULT 14');
 ensureColumn('sites', 'app_port', 'INTEGER');
 ensureColumn('sites', 'config_status', "TEXT NOT NULL DEFAULT 'pending'");
 ensureColumn('sites', 'server_id', "TEXT NOT NULL DEFAULT 'local'");
+ensureColumn('servers', 'last_probed_at', 'TEXT');
 ensureColumn('sites', 'node_version', 'TEXT');
 ensureColumn('sites', 'python_version', 'TEXT');
 ensureColumn('sites', 'public_access', 'INTEGER NOT NULL DEFAULT 0');

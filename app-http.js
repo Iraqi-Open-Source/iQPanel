@@ -13,7 +13,9 @@ const server = http.createServer((request, response) => {
 });
 
 if (require.main === module) {
+  const serverProbe = require('./server-probe');
   worker.start();
+  serverProbe.start();
   server.on('error', (error) => {
     if (error.code === 'EADDRINUSE') {
       console.error(`Port ${port} is already in use on ${bind}.`);

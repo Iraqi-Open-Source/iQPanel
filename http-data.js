@@ -1,10 +1,13 @@
-const { send, body, getSite, log, slugify, publicDatabase, now, id, db, secrets, queue, agentClient } = require('./http-shared');
+const { send, body, getSite, log, slugify, now, id, db, secrets, queue, agentClient, siteAgent, publicDatabase } = require('./http-shared');
 const metrics = require('./metrics');
 const { syncCrontab } = require('./http-cron');
+const { listServers } = require('./servers');
+const { probeServer } = require('./server-probe');
+const { publicSettings } = require('./http-settings');
 
 async function agentHealth() {
   try {
-    await agentClient.invoke('ping');
+    await agentClient.forServer(publicSettings().active_server_id || 'local').invoke('ping');
     return 'online';
   } catch {
     return 'offline';
@@ -20,9 +23,10 @@ async function handleData(request, response, pathname) {
     const fs = require('node:fs');
     const agentMode = process.env.PANEL_AGENT_SOCKET && fs.existsSync(process.env.PANEL_AGENT_SOCKET) ? 'socket' : 'local';
     const snapshot = metrics.snapshot();
+    const activeServerId = publicSettings().active_server_id || 'local';
     let services = {};
     try {
-      services = await agentClient.invoke('serviceStatus');
+      services = await agentClient.forServer(activeServerId).invoke('serviceStatus');
     } catch {
       services = {};
     }
@@ -31,6 +35,8 @@ async function handleData(request, response, pathname) {
       activity,
       deployments,
       backups,
+      servers: listServers(),
+      active_server_id: activeServerId,
       server: {
         status: 'healthy',
         cpu: snapshot.cpu,
@@ -42,6 +48,7 @@ async function handleData(request, response, pathname) {
         agent_mode: agentMode,
         data_root: db.root,
         services,
+        active_server_id: activeServerId,
       },
     });
     return true;
@@ -86,7 +93,7 @@ async function handleData(request, response, pathname) {
     const secret = input.password || secrets.password();
     const mode = input.mode === 'attach' ? 'attach' : 'create';
     const engine = ['mariadb', 'postgres', 'postgresql'].includes(input.engine) ? (input.engine === 'postgresql' ? 'postgres' : input.engine) : 'mysql';
-    const provisioned = await agentClient.invoke('provisionDatabase', { db_name: databaseName, db_user: databaseUser, password: secret, mode, engine });
+    const provisioned = await siteAgent(site).invoke('provisionDatabase', { db_name: databaseName, db_user: databaseUser, password: secret, mode, engine });
     const database = { id: id(), site_id: site.id, engine, db_name: databaseName, db_user: databaseUser, host: 'localhost', granted: provisioned.granted ? 1 : 0, created_at: now() };
     db.run(`INSERT INTO databases (id,site_id,engine,db_name,db_user,host,password_ciphertext,granted,created_at) VALUES (${db.sql(database.id)},${db.sql(database.site_id)},${db.sql(database.engine)},${db.sql(database.db_name)},${db.sql(database.db_user)},'localhost',${db.sql(secrets.encrypt(secret))},${database.granted},${db.sql(database.created_at)})`);
     log('Database created', site.name, `${database.engine}: ${database.db_name}`);
@@ -111,7 +118,7 @@ async function handleData(request, response, pathname) {
     if (!database) { send(response, 404, { error: 'Database not found' }); return true; }
     const site = db.rows(`SELECT * FROM sites WHERE id=${db.sql(database.site_id)}`)[0];
     const destination = require('node:path').join(db.root, 'backups', site.slug, `dump-${Date.now()}`);
-    const job = queue.enqueue('dump', { database: publicDatabase(database), password_ciphertext: database.password_ciphertext, destination, site_id: site.id });
+    const job = queue.enqueue('dump', { database: publicDatabase(database), password_ciphertext: database.password_ciphertext, destination, site_id: site.id, server_id: site.server_id || 'local' });
     log('Database dump queued', database.db_name, job.id);
     send(response, 202, { status: 'queued', job_id: job.id });
     return true;

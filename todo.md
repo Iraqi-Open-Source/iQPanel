@@ -1,8 +1,8 @@
 # iQPanel Implementation Checklist
 
-Status reflects Phase 1 and Phase 2 work against `opensource-server-panel-plan.md`.
+Status reflects Phase 1 and Phase 2 work against `opensource-server-panel-plan.md`. Phase 3 is broken into six slices (3A–3F) with explicit dependencies.
 
-## Phase 1: MVP (working)
+## Phase 1: MVP (shipped)
 
 ### Platform architecture
 
@@ -54,7 +54,7 @@ Status reflects Phase 1 and Phase 2 work against `opensource-server-panel-plan.m
 
 - [x] Automated tests (`npm test`) covering API, agent, auth, queue, metrics, ports
 
-## Phase 2 (working)
+## Phase 2 (shipped)
 
 - [x] Apache support (vhost templates, apply/rollback, site create)
 - [x] PostgreSQL support (grants SQL, dump, API engine)
@@ -66,27 +66,85 @@ Status reflects Phase 1 and Phase 2 work against `opensource-server-panel-plan.m
 - [x] Certbot / UFW per-site automation (generated locally; applied when `PANEL_APPLY_SYSTEM=1`)
 - [x] Multi-server registry (`/api/servers` local + remote records)
 
-## Phase 3 (later)
+## Phase 3A — Remote Agent routing
 
-- [ ] Remote agent TCP invoke routing per registered server
-- [ ] Per-site isolated system users
-- [ ] GitHub webhooks for auto-deploy and rollback
-- [ ] Role-based access control, TOTP 2FA, full audit log UI
-- [ ] OpenLiteSpeed support and LNMP/LAMP/LLMP stack presets
-- [ ] Cloudflare DNS, mail server, phpMyAdmin, Fail2Ban, swap, disk extension, and SSH key management
-- [ ] Service installer UI with package allowlists and idempotent install jobs
-- [ ] Browser file-manager UI and upload/download support on top of the secure file API
-- [ ] WordPress one-click install, staging/clone, backup/restore, config editor, and plugin/theme management
-- [ ] Alert delivery worker for Telegram and Discord threshold notifications
+Depends on: Phase 2 multi-server registry (shipped).
 
-## Feature foundations shipped
+- [x] Agent TCP listener (token-authenticated) on managed hosts
+- [x] `agent-client.invoke` routes by `server_id` (local Unix socket vs remote TCP)
+- [x] Background health probe updates `servers.status`
+- [x] `sites.server_id` column; site jobs target the bound server
+- [x] Dashboard server picker and connectivity indicator
+- [x] Tests: remote routing, invalid token, offline host, local fallback
+
+## Phase 3B — Deploy webhooks and rollback
+
+Depends on: 3A (for remote-server deploys).
+
+- [ ] `POST /api/webhooks/github/:siteId` with HMAC verification
+- [ ] Record `commit_sha` and full log on clone/pull completion
+- [ ] `POST /api/sites/:slug/deployments/:id/rollback`
+- [ ] Optional deploy branch/tag filter per site
+- [ ] Dashboard deploy history with rollback action
+- [ ] Tests: webhook signatures, rollback to missing SHA, concurrent deploy dedup
+
+## Phase 3C — Per-site OS users
+
+Can run in parallel with 3A/3B.
+
+- [ ] Agent provisions `iqpanel-<slug>` user on site create
+- [ ] Nginx/Apache, PHP-FPM, and systemd units use site user
+- [ ] Cron and terminal scoped to site user by default
+- [ ] Site delete removes Unix user when unshared
+- [ ] Migration job for existing `www-data`-owned sites
+- [ ] Tests: cross-site filesystem isolation
+
+## Phase 3D — Team auth, 2FA, and audit UI
+
+Can run in parallel with 3A–3C. Required before public exposure.
+
+- [ ] `users` table with `owner` / `admin` / `operator` / `readonly` roles
+- [ ] TOTP 2FA enrollment, backup codes, verify-on-login
+- [ ] Re-auth before terminal, site delete, and root-capable actions
+- [ ] `GET /api/audit` with pagination and filters
+- [ ] Dashboard audit log view and team member settings
+- [ ] Migrate single admin password to first `owner` on upgrade
+- [ ] Tests: role enforcement, 2FA lockout, audit coverage
+
+## Phase 3E — Host integrations (Agent + installer)
+
+Independent slices; each needs Agent action, installer hook, `verify.sh` check, and `FEATURE_CATALOG` update.
+
+- [ ] OpenLiteSpeed vhost templates and per-site webserver option
+- [ ] LNMP / LAMP / LLMP stack presets (`installer --stack`)
+- [ ] Fail2Ban jail templates and status API
+- [ ] Swap enable/disable with size limits
+- [ ] Disk extension (allowlisted LVM/partition grow, dry-run first)
+- [ ] SSH `authorized_keys` management (admin keys)
+- [ ] Mail server (Postfix + Dovecot minimal, optional)
+- [ ] phpMyAdmin vhost install
+- [ ] Cloudflare DNS A/AAAA/CNAME upsert via API token
+
+## Phase 3F — Dashboard parity UI and alert delivery
+
+Depends on: 3B (deploy UI), 3C (ownership-aware file ops), 3D (auth for sensitive UI), 3E (settings for integrations).
+
+- [ ] File manager UI (list, edit, upload, download, rename, delete)
+- [ ] WordPress one-click install, staging clone, backup/restore UI
+- [ ] WordPress plugin/theme list and activate/deactivate UI
+- [ ] Service installer UI with package allowlists and job progress
+- [ ] Alert delivery worker (metric poll → `alert_events` → Telegram/Discord)
+- [ ] Alert deduplication cooldown per channel
+- [ ] Tests: upload traversal, WP install rollback, alert dedup
+
+## Feature foundations shipped (API only — complete in 3F)
 
 - [x] Path-constrained per-site file API (`/api/sites/:slug/files`)
 - [x] Allowlisted WordPress WP-CLI API (`/api/sites/:slug/wordpress`)
 - [x] Runtime feature catalog and host capability inventory
 - [x] Alert threshold configuration with encrypted Discord webhook storage
 
-These foundations deliberately return `planned` for integrations that still need installer, agent, and UI work. Do not mark a feature complete until it has an API, safe privileged implementation, frontend workflow, installer coverage, and tests.
+Do not mark a Phase 3 slice complete until it has API, safe privileged implementation, frontend workflow (when applicable), installer coverage (when applicable), and tests.
 
 ## Manual verification (Ubuntu VM)
 

@@ -1,12 +1,14 @@
-const { send, getSite, log, slugify, now, id, db, agentClient, body } = require('./http-shared');
+const { send, getSite, log, slugify, now, id, db, siteAgent, body } = require('./http-shared');
 const { allocatePorts } = require('./ports');
+const { resolveServerId } = require('./servers');
 
 async function applySiteConfig(site) {
+  const agent = siteAgent(site);
   const web = site.webserver === 'apache'
-    ? await agentClient.invoke('applyApacheConfig', site)
-    : await agentClient.invoke('applyNginxConfig', site);
+    ? await agent.invoke('applyApacheConfig', site)
+    : await agent.invoke('applyNginxConfig', site);
   let php = null;
-  if (site.type === 'php') php = await agentClient.invoke('applyPhpPool', site);
+  if (site.type === 'php') php = await agent.invoke('applyPhpPool', site);
   const status = web.applied || php?.applied ? 'applied' : 'generated';
   db.run(`UPDATE sites SET config_status=${db.sql(status)}, updated_at=${db.sql(now())} WHERE id=${db.sql(site.id)}`);
   return { web, php, status };
@@ -27,6 +29,7 @@ async function handleSiteCreate(request, response, pathname) {
   const runtime_version = input.runtime_version
     ? String(input.runtime_version)
     : (type === 'php' ? '8.3' : type === 'node' ? '20' : null);
+  const server_id = resolveServerId(input.server_id);
   const site = {
     id: id(),
     name,
@@ -37,13 +40,14 @@ async function handleSiteCreate(request, response, pathname) {
     app_port: ports.app_port,
     webserver,
     runtime_version,
+    server_id,
     status: 'online',
     config_status: 'pending',
     created_at: created,
     updated_at: created,
   };
-  const key = await agentClient.invoke('createSite', slug);
-  db.run(`INSERT INTO sites (id,name,slug,type,repo_url,deploy_key_path,deploy_key_public,port,app_port,webserver,runtime_version,status,config_status,created_at,updated_at) VALUES (${db.sql(site.id)},${db.sql(site.name)},${db.sql(site.slug)},${db.sql(site.type)},${db.sql(site.repo_url)},${db.sql(key.keyPath)},${db.sql(key.publicKey)},${site.port},${site.app_port},${db.sql(webserver)},${db.sql(site.runtime_version)},'online','pending',${db.sql(created)},${db.sql(created)})`);
+  const key = await siteAgent(site).invoke('createSite', slug);
+  db.run(`INSERT INTO sites (id,name,slug,type,repo_url,deploy_key_path,deploy_key_public,port,app_port,webserver,runtime_version,server_id,status,config_status,created_at,updated_at) VALUES (${db.sql(site.id)},${db.sql(site.name)},${db.sql(site.slug)},${db.sql(site.type)},${db.sql(site.repo_url)},${db.sql(key.keyPath)},${db.sql(key.publicKey)},${site.port},${site.app_port},${db.sql(webserver)},${db.sql(site.runtime_version)},${db.sql(server_id)},'online','pending',${db.sql(created)},${db.sql(created)})`);
   const applied = await applySiteConfig(site);
   log('Site created', name, `Deploy key generated for ${slug}`);
   send(response, 201, { ...site, config_status: applied.status, deploy_key_public: key.publicKey });

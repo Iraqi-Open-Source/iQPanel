@@ -1,27 +1,10 @@
-const { send, body, getSite, log, now, id, db, secrets, agentClient } = require('./http-shared');
-
-function publicServer(row) {
-  if (!row) return row;
-  const clone = { ...row };
-  delete clone.token;
-  delete clone.token_ciphertext;
-  return clone;
-}
-
-function localServer() {
-  return {
-    id: 'local',
-    name: 'Local agent',
-    host: '127.0.0.1',
-    port: Number(process.env.PANEL_AGENT_LISTEN_PORT || 4174),
-    kind: 'local',
-    status: 'online',
-  };
-}
+const { send, body, log, now, id, db, secrets } = require('./http-shared');
+const { localServer, publicServer, listServers } = require('./servers');
+const { probeServer } = require('./server-probe');
 
 async function handleServers(request, response, pathname) {
   if (request.method === 'GET' && pathname === '/api/servers') {
-    send(response, 200, [localServer(), ...db.rows('SELECT * FROM servers ORDER BY created_at DESC').map(publicServer)]);
+    send(response, 200, listServers());
     return true;
   }
   if (request.method === 'POST' && pathname === '/api/servers') {
@@ -35,12 +18,29 @@ async function handleServers(request, response, pathname) {
     const cipher = secrets.encrypt(String(input.token || ''));
     db.run(`INSERT INTO servers (id,name,host,port,token_ciphertext,kind,status,created_at) VALUES (${db.sql(row.id)},${db.sql(row.name)},${db.sql(row.host)},${row.port},${db.sql(cipher)},'remote','unknown',${db.sql(row.created_at)})`);
     log('Server registered', name, host);
-    send(response, 201, publicServer(row));
+    const status = await probeServer(row.id).catch(() => 'unknown');
+    send(response, 201, { ...publicServer(row), status });
+    return true;
+  }
+  const probeMatch = pathname.match(/^\/api\/servers\/([^/]+)\/probe$/);
+  if (probeMatch && request.method === 'POST') {
+    if (probeMatch[1] === 'local') {
+      const status = await probeServer('local');
+      send(response, 200, { ...localServer(), status });
+      return true;
+    }
+    const row = db.rows(`SELECT * FROM servers WHERE id=${db.sql(probeMatch[1])}`)[0];
+    if (!row) { send(response, 404, { error: 'Server not found' }); return true; }
+    const status = await probeServer(row.id);
+    const updated = db.rows(`SELECT * FROM servers WHERE id=${db.sql(row.id)}`)[0];
+    send(response, 200, { ...publicServer(updated), status });
     return true;
   }
   const match = pathname.match(/^\/api\/servers\/([^/]+)$/);
   if (match && request.method === 'DELETE') {
     if (match[1] === 'local') throw new Error('Cannot delete the local server');
+    const bound = db.rows(`SELECT slug FROM sites WHERE server_id=${db.sql(match[1])} LIMIT 1`)[0];
+    if (bound) throw new Error(`Server still has sites (for example ${bound.slug})`);
     db.run(`DELETE FROM servers WHERE id=${db.sql(match[1])}`);
     log('Server removed', match[1]);
     send(response, 204, {});

@@ -42,6 +42,10 @@ function publicDatabase(row) {
   return clone;
 }
 
+function siteAgent(site) {
+  return agentClient.forServer(site?.server_id || 'local');
+}
+
 module.exports = {
-  body, send, getSite, log, slugify, publicDatabase, sessions, loginAttempts, now, id, publicRoot, crypto, db, secrets, queue, agentClient,
+  body, send, getSite, log, slugify, publicDatabase, siteAgent, sessions, loginAttempts, now, id, publicRoot, crypto, db, secrets, queue, agentClient,
 };

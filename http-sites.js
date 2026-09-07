@@ -1,13 +1,14 @@
-const { send, getSite, log, slugify, now, id, db, agentClient } = require('./http-shared');
+const { send, getSite, log, slugify, now, id, db, siteAgent } = require('./http-shared');
 const { allocatePorts } = require('./ports');
 const queue = require('./queue');
 
 async function applySiteConfig(site) {
+  const agent = siteAgent(site);
   const web = site.webserver === 'apache'
-    ? await agentClient.invoke('applyApacheConfig', site)
-    : await agentClient.invoke('applyNginxConfig', site);
+    ? await agent.invoke('applyApacheConfig', site)
+    : await agent.invoke('applyNginxConfig', site);
   let php = null;
-  if (site.type === 'php') php = await agentClient.invoke('applyPhpPool', site);
+  if (site.type === 'php') php = await agent.invoke('applyPhpPool', site);
   const status = web.applied || php?.applied ? 'applied' : 'generated';
   db.run(`UPDATE sites SET config_status=${db.sql(status)}, updated_at=${db.sql(now())} WHERE id=${db.sql(site.id)}`);
   return { web, php, status };
@@ -30,7 +31,7 @@ async function handleSites(request, response, pathname) {
     const ports = allocatePorts(db.rows('SELECT port, app_port FROM sites'));
     const created = now();
     const site = { id: id(), name, slug, type, repo_url: repo, port: ports.port, app_port: ports.app_port, webserver: 'nginx', runtime_version: type === 'php' ? '8.3' : null, status: 'online', config_status: 'pending', created_at: created, updated_at: created };
-    const key = await agentClient.invoke('createSite', slug);
+    const key = await siteAgent(site).invoke('createSite', slug);
     db.run(`INSERT INTO sites (id,name,slug,type,repo_url,deploy_key_path,deploy_key_public,port,app_port,webserver,runtime_version,status,config_status,created_at,updated_at) VALUES (${db.sql(site.id)},${db.sql(site.name)},${db.sql(site.slug)},${db.sql(site.type)},${db.sql(site.repo_url)},${db.sql(key.keyPath)},${db.sql(key.publicKey)},${site.port},${site.app_port},'nginx',${db.sql(site.runtime_version)},'online','pending',${db.sql(created)},${db.sql(created)})`);
     const applied = await applySiteConfig(site);
     log('Site created', name, `Deploy key generated for ${slug}`);
@@ -43,14 +44,14 @@ async function handleSites(request, response, pathname) {
     const site = getSite(logsMatch[1]);
     if (!site) { send(response, 404, { error: 'Site not found' }); return true; }
     if (request.method === 'GET' && !logsMatch[2]) {
-      send(response, 200, await agentClient.invoke('discoverLogs', site.slug));
+      send(response, 200, await siteAgent(site).invoke('discoverLogs', site.slug));
       return true;
     }
     if (request.method === 'GET' && logsMatch[2] && logsMatch[3] === 'stream') {
       response.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' });
       let previous = '';
       const push = async () => {
-        const text = await agentClient.invoke('readLog', site.slug, logsMatch[2], 200);
+        const text = await siteAgent(site).invoke('readLog', site.slug, logsMatch[2], 200);
         if (text !== previous) {
           const chunk = text.startsWith(previous) ? text.slice(previous.length) : text;
           previous = text;
@@ -63,7 +64,7 @@ async function handleSites(request, response, pathname) {
       return true;
     }
     if (request.method === 'GET' && logsMatch[2]) {
-      send(response, 200, { name: logsMatch[2], text: await agentClient.invoke('readLog', site.slug, logsMatch[2], 200) });
+      send(response, 200, { name: logsMatch[2], text: await siteAgent(site).invoke('readLog', site.slug, logsMatch[2], 200) });
       return true;
     }
   }
@@ -88,7 +89,7 @@ async function handleSites(request, response, pathname) {
     return true;
   }
   if (request.method === 'DELETE' && !siteMatch[2]) {
-    await agentClient.invoke('removeSite', site.slug, { runtime_version: site.runtime_version });
+    await siteAgent(site).invoke('removeSite', site.slug, { runtime_version: site.runtime_version });
     db.run(`DELETE FROM sites WHERE id=${db.sql(site.id)}`);
     log('Site deleted', site.name);
     send(response, 204, {});
@@ -97,7 +98,7 @@ async function handleSites(request, response, pathname) {
   if (request.method === 'POST' && siteMatch[2] === 'deploy') {
     const deploymentId = id();
     db.run(`INSERT INTO deployments (id,site_id,status,log,created_at) VALUES (${db.sql(deploymentId)},${db.sql(site.id)},'queued','Clone job queued by admin',${db.sql(now())})`);
-    const job = queue.enqueue('deploy', { slug: site.slug, repo_url: site.repo_url, deployment_id: deploymentId });
+    const job = queue.enqueue('deploy', { slug: site.slug, repo_url: site.repo_url, deployment_id: deploymentId, server_id: site.server_id || 'local' });
     log('Deployment queued', site.name, 'Git SSH deploy');
     send(response, 202, { status: 'queued', job_id: job.id, deployment_id: deploymentId });
     return true;
@@ -105,13 +106,13 @@ async function handleSites(request, response, pathname) {
   if (request.method === 'POST' && siteMatch[2] === 'backup') {
     const { publicDatabase } = require('./http-shared');
     const databases = db.rows(`SELECT * FROM databases WHERE site_id=${db.sql(site.id)}`).map(publicDatabase);
-    const job = queue.enqueue('backup', { site, databases, retention: { keepCount: site.backup_keep_count || 5, keepDays: site.backup_keep_days || 14 } });
+    const job = queue.enqueue('backup', { site, databases, retention: { keepCount: site.backup_keep_count || 5, keepDays: site.backup_keep_days || 14 }, server_id: site.server_id || 'local' });
     log('Backup queued', site.name, job.id);
     send(response, 202, { status: 'queued', job_id: job.id });
     return true;
   }
   if (request.method === 'POST' && siteMatch[2] === 'install') {
-    const job = queue.enqueue('install', { site });
+    const job = queue.enqueue('install', { site, server_id: site.server_id || 'local' });
     log('Install queued', site.name, job.id);
     send(response, 202, { status: 'queued', job_id: job.id });
     return true;

@@ -479,58 +479,188 @@ Store these as actual files under `agent/templates/systemd/*.service.hbs` in the
 
 ## 15. Development Roadmap
 
-**Phase 1 — MVP**
+### Phase 1 — MVP (shipped)
+
 - Bootstrap installer (Ubuntu 22.04/24.04 first).
 - Sites CRUD, Git deploy (SSH key flow), PHP + Nginx only.
 - Manual DB create/attach (MySQL only).
 - Basic cron + one systemd template (queue worker).
 - Log viewer (tail-based), local backups only.
 
-**Phase 2**
+### Phase 2 — Extended stack (shipped)
+
 - Apache support, PostgreSQL support, multi-PHP/Node versions.
 - Docker management, FTP + Telegram backup destinations.
 - Web terminal, more systemd templates (FastAPI, Node, ASP.NET).
 - UFW + Certbot automation, domain-later flow.
+- Multi-server registry (local + remote host/token records).
 
-**Phase 3**
-- Multi-server (Agent-per-server) support.
-- Per-site isolated system users (extra tenant isolation).
-- Webhooks for auto-deploy on push, deployment rollback.
-- Role-based access control, 2FA, full audit log UI.
+### Phase 3 — Multi-tenant, automation, and parity
 
----
+Phase 3 is split into six slices. Each slice has explicit dependencies; do not mark a slice complete until API, Agent, installer coverage (when applicable), frontend workflow, and tests land together.
 
-## 16. Open Questions to Decide Early
+#### Phase 3A — Remote Agent routing
 
-- Panel DB: SQLite-only (simplest, single-server) vs. optional Postgres from day one (multi-server-ready)?
-- License: MIT vs AGPL-3.0?
-- Per-site OS users (stronger isolation, more complex) vs. everything under `www-data`/`panel` (simpler, weaker isolation)? Worth doing per-site users in Phase 3 if you want real multi-tenant security.
-- Single binary Agent (Go) vs. Node Agent (simpler to share code with API, larger footprint)?
+**Goal:** one panel UI can invoke Agent actions on registered remote hosts, not only the local Unix socket.
 
----
+**Shipped foundation:** `servers` table, `GET/POST/DELETE /api/servers`, encrypted `token_ciphertext`, local server record in API responses.
 
-## 17. WPanel Feature Parity Roadmap
+**Work remaining:**
 
-The comparison target advertises a broader VPS product than the current iQPanel MVP. This section is the implementation boundary for parity work; it separates shipped foundations from work that must not be represented as complete prematurely.
+1. Agent TCP listener (token-authenticated, TLS optional) on managed hosts; installer enables it alongside the Unix socket.
+2. `agent-client.invoke(action, args, { serverId })` routes to local socket or remote TCP based on `server_id`.
+3. Background health probe updates `servers.status` (`online` / `offline` / `unknown`).
+4. `sites.server_id` column (default `local`); site create/apply/deploy jobs target the bound server.
+5. Dashboard server picker and per-server connectivity indicator.
+6. Tests: remote routing mock, invalid token, offline host, local fallback unchanged.
 
-### Shipped foundations
+**Acceptance:** creating a site on a registered remote server runs `createSite` on that host; local-only installs keep working with no TCP listener.
 
-- Secure, path-constrained site file operations through the Agent.
-- Allowlisted WP-CLI detection and maintenance commands.
-- Runtime feature catalog and host capability discovery.
-- Alert threshold configuration with encrypted webhook storage.
+#### Phase 3B — Deploy webhooks and rollback
 
-### Next implementation slices
+**Goal:** push-to-deploy from GitHub and one-click rollback to a previous deployment.
 
-1. Add installer and Agent modules for OpenLiteSpeed, package/service installation, Fail2Ban, swap, disk growth, SSH keys, mail, phpMyAdmin, and Cloudflare. Every operation must be idempotent, allowlisted, logged, and testable without changing the host in local mode.
-2. Add browser workflows for files, WordPress, alerts, service installation, and host security. Uploads must use size limits, content-type checks, and the same site-root confinement as the API.
-3. Add TOTP 2FA, roles, re-authentication for terminal/root-capable actions, and an audit-log UI before exposing the panel publicly.
-4. Add WordPress provisioning and staging only after database credentials, filesystem ownership, rollback, and backup behavior are covered by integration tests.
+**Shipped foundation:** `deployments` table, clone/pull job queue, `activity_log` entries on deploy actions.
 
-### Acceptance criteria for parity
+**Work remaining:**
+
+1. `POST /api/webhooks/github/:siteId` with HMAC signature verification and replay protection.
+2. Record `commit_sha` on every clone/pull job completion; store full deploy log in `deployments`.
+3. `POST /api/sites/:slug/deployments/:id/rollback` checks out the recorded SHA and re-runs apply.
+4. Optional deploy branch/tag filter per site.
+5. Dashboard deploy history with status, SHA, trigger source (`manual` / `webhook`), and rollback button.
+6. Tests: valid/invalid webhook signatures, rollback to missing SHA, concurrent deploy deduplication.
+
+**Acceptance:** a GitHub push to the configured branch queues a deploy; rollback restores the previous known-good commit and reapplies vhost/runtime config.
+
+#### Phase 3C — Per-site OS users
+
+**Goal:** each site runs under its own unprivileged Unix user for filesystem and process isolation.
+
+**Shipped foundation:** `run_as_user` on cron jobs; systemd/nginx/php-fpm templates already accept `{{run_as_user}}` (currently defaults to `www-data`).
+
+**Work remaining:**
+
+1. Agent `createSite` provisions `iqpanel-<slug>` system user and group; site tree owned by that user.
+2. Nginx/Apache vhost `user`/`su` directives, PHP-FPM pool `user`/`group`, and systemd `User=` all set to the site user.
+3. Cron and terminal sessions scoped to site user unless admin explicitly escalates.
+4. `DELETE` site removes the Unix user when no other site shares it.
+5. One-time migration job for existing `www-data`-owned sites.
+6. Tests: user created on site create, pool runs as site user, traversal blocked across site roots.
+
+**Acceptance:** two sites cannot read each other's app directories without panel admin escalation.
+
+#### Phase 3D — Team auth, 2FA, and audit UI
+
+**Goal:** safe multi-user panel access with accountability before exposing the dashboard publicly.
+
+**Shipped foundation:** optional `PANEL_ADMIN_PASSWORD_HASH`, rate-limited login, `activity_log` table (API writes today; no UI), terminal session start/end logging.
+
+**Work remaining:**
+
+1. `users` table: `owner`, `admin`, `operator`, `readonly` roles; bcrypt password hashes.
+2. TOTP 2FA enrollment, backup codes, and verify-on-login flow.
+3. Re-authentication prompt before terminal, site delete, UFW changes, and other root-capable actions.
+4. `GET /api/audit` with pagination and filters (`action`, `target`, date range, `user_id`).
+5. Dashboard audit log view; settings page for team member CRUD.
+6. Migrate single admin password to first `owner` user on upgrade.
+7. Tests: role enforcement per endpoint, 2FA lockout, audit entries on privileged actions.
+
+**Acceptance:** a `readonly` user cannot open a terminal or delete a site; every privileged action appears in the audit log with actor and timestamp.
+
+#### Phase 3E — Host integrations (Agent + installer)
+
+**Goal:** idempotent, allowlisted OS integrations behind the Agent — never arbitrary shell from the UI.
+
+**Shipped foundation:** `systemCapabilities` detects installed binaries; `FEATURE_CATALOG` marks integrations as `planned`; installer covers Nginx, Apache, PHP, MySQL, PostgreSQL, Docker, Certbot, UFW.
+
+**Work remaining (each item needs Agent action, installer hook, `verify.sh` check, and `FEATURE_CATALOG` status update):**
+
+| Integration | Agent scope | Notes |
+|---|---|---|
+| OpenLiteSpeed | vhost templates, enable/disable listener | third webserver choice per site |
+| Stack presets | LNMP / LAMP / LLMP profiles | installer `--stack` flag, idempotent package set |
+| Fail2Ban | jail templates, ban/unban/status | ssh + panel login jails |
+| Swap | enable/disable swap file | size limit, `swapon` verification |
+| Disk extension | grow LVM or partition | allowlisted devices only, dry-run first |
+| SSH keys | `authorized_keys` add/remove | panel admin keys, not site deploy keys |
+| Mail server | Postfix + Dovecot minimal install | optional, off by default |
+| phpMyAdmin | vhost + config under `/etc` | bound to localhost or admin-only |
+| Cloudflare DNS | A/AAAA/CNAME upsert via API token | per-site or global token in encrypted settings |
+
+**Acceptance:** `GET /api/system/features` reports `available` only after integration tests pass; local dev mode (`PANEL_APPLY_SYSTEM` unset) exercises code paths without mutating the host.
+
+#### Phase 3F — Dashboard parity UI and alert delivery
+
+**Goal:** browser workflows for APIs and foundations already shipped in Phase 2.
+
+**Shipped foundation:** secure file API (`/api/sites/:slug/files`), WordPress WP-CLI API (`/api/sites/:slug/wordpress`), alert thresholds + encrypted Discord webhook in settings, `alert_events` table.
+
+**Work remaining:**
+
+1. **File manager UI** — tree browser, edit, upload (size/type limits), download, rename, delete; same site-root confinement as the API.
+2. **WordPress UI** — one-click install (DB + files + `wp core install`), staging clone, backup/restore hooks, plugin/theme list and activate/deactivate via existing allowlist.
+3. **Service installer UI** — package allowlists, idempotent install jobs with progress in the job queue.
+4. **Alert delivery worker** — background poll of CPU/memory/disk metrics; enqueue `alert_events`; deliver via Telegram and Discord when thresholds exceeded; dedupe within a cooldown window.
+5. Tests: upload traversal rejection, WordPress install rollback on failure, alert deduplication, service install unavailable-package path.
+
+**Acceptance:** an admin can manage site files and WordPress from the browser without curl; threshold breaches produce at most one notification per channel per cooldown period.
+
+### Phase 3 dependency graph
+
+```mermaid
+flowchart TD
+  3A[3A Remote Agent routing]
+  3B[3B Webhooks and rollback]
+  3C[3C Per-site OS users]
+  3D[3D Team auth and audit UI]
+  3E[3E Host integrations]
+  3F[3F Dashboard parity UI]
+
+  3A --> 3B
+  3C --> 3F
+  3D --> 3F
+  3E --> 3F
+  3B --> 3F
+```
+
+3A before 3B (webhooks on remote servers need routing). 3C and 3D can proceed in parallel after Phase 2. 3E items are independent slices inside the phase. 3F UI work should follow the APIs it surfaces.
+
+### Global acceptance criteria (all phases)
 
 - `/api/system/features` reports `available`, `configurable`, or `planned` based on tested behavior, not README claims.
 - No feature invokes arbitrary user-supplied shell commands.
-- Installer verification covers every supported OS package and systemd unit.
+- Installer `verify.sh` covers every supported OS package and systemd unit.
 - API and frontend tests cover success, unavailable-tool, traversal, authentication, and rollback paths.
-- README, checklist, and runtime feature catalog stay synchronized.
+- `todo.md`, README, and `FEATURE_CATALOG` stay synchronized.
+
+---
+
+## 16. Decisions (resolved and open)
+
+| Question | Decision | Rationale |
+|---|---|---|
+| Panel DB | **SQLite** (single-server default) | Shipped; zero-config installer; revisit Postgres only if multi-panel replication is needed |
+| Agent runtime | **Node.js** (shared code with API) | Shipped; `ops.js` inline mode for dev, Unix socket daemon in production |
+| Per-site OS users | **Phase 3C** | Stronger tenant isolation; templates already support `run_as_user` |
+| License | **Open** | MIT vs AGPL-3.0 still TBD before first public release |
+
+---
+
+## 17. WPanel Feature Parity Map
+
+Maps advertised WPanel capabilities to iQPanel phase slices. Do not mark a row complete until the corresponding phase acceptance criteria pass.
+
+| WPanel capability | Phase | Status |
+|---|---|---|
+| Site CRUD, Git deploy, Nginx/Apache, PHP/Node/Python/Docker | 1–2 | shipped |
+| MySQL/MariaDB/PostgreSQL, backups (local/FTP/Telegram) | 1–2 | shipped |
+| Docker, cron, systemd templates, web terminal | 2 | shipped |
+| Certbot, UFW, multi-server registry | 2 | shipped |
+| Per-site file API, WP-CLI API, feature catalog, alert config | 2 foundations | shipped (API only) |
+| Multi-server Agent invoke | 3A | planned |
+| GitHub auto-deploy and rollback | 3B | planned |
+| Per-site Unix user isolation | 3C | planned |
+| Team roles, TOTP 2FA, audit log UI | 3D | planned |
+| OpenLiteSpeed, stack presets, Fail2Ban, swap, disk, SSH keys, mail, phpMyAdmin, Cloudflare | 3E | planned |
+| File manager UI, WordPress UI, service installer UI, alert delivery | 3F | planned |

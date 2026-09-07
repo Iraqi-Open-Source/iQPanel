@@ -58,7 +58,7 @@ async function handleRequest(request, response) {
   }
   const types = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.woff2': 'font/woff2' };
   if (path.basename(filePath) === 'index.html') {
-    const html = fs.readFileSync(filePath, 'utf8').replace('</body>', '<script src="/phase2.js"></script></body>');
+    const html = fs.readFileSync(filePath, 'utf8').replace('</body>', '<script src="/phase2.js"></script><script src="/phase3a.js"></script></body>');
     response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
     response.end(html);
     return;

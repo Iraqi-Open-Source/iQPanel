@@ -1,4 +1,4 @@
-const { send, getSite, log, now, id, db, agentClient, body } = require('./http-shared');
+const { send, getSite, log, now, id, db, siteAgent, body } = require('./http-shared');
 
 async function handleServices(request, response, pathname) {
   const match = pathname.match(/^\/api\/sites\/([^/]+)\/services(?:\/([^/]+)(?:\/(start|stop|restart))?)?$/);
@@ -15,7 +15,7 @@ async function handleServices(request, response, pathname) {
   if (request.method === 'POST' && !match[2]) {
     const input = await body(request);
     const template = input.template || 'laravel-queue';
-    const applied = await agentClient.invoke('applySystemdUnit', site, template);
+    const applied = await siteAgent(site).invoke('applySystemdUnit', site, template);
     const row = {
       id: id(),
       site_id: site.id,
@@ -35,7 +35,7 @@ async function handleServices(request, response, pathname) {
       send(response, 404, { error: 'Service not found' });
       return true;
     }
-    const result = await agentClient.invoke('controlSystemdUnit', service.unit_name, match[3]);
+    const result = await siteAgent(site).invoke('controlSystemdUnit', service.unit_name, match[3]);
     const status = result.status || match[3];
     db.run(`UPDATE systemd_services SET status=${db.sql(status)} WHERE id=${db.sql(service.id)}`);
     send(response, 200, { ...service, status, result });
@@ -47,7 +47,7 @@ async function handleServices(request, response, pathname) {
       send(response, 404, { error: 'Service not found' });
       return true;
     }
-    await agentClient.invoke('controlSystemdUnit', service.unit_name, 'disable');
+    await siteAgent(site).invoke('controlSystemdUnit', service.unit_name, 'disable');
     db.run(`DELETE FROM systemd_services WHERE id=${db.sql(service.id)}`);
     log('Service deleted', site.name, service.unit_name);
     send(response, 204, {});

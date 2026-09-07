@@ -1,15 +1,29 @@
 const { send, getSite, log, now, id, db, agentClient, body } = require('./http-shared');
 
 function cronJobsForUser(user) {
-  return db.rows(`SELECT cron_jobs.*, sites.slug AS slug FROM cron_jobs LEFT JOIN sites ON sites.id = cron_jobs.site_id WHERE cron_jobs.run_as_user=${db.sql(user)}`).map((job) => ({
+  return db.rows(`SELECT cron_jobs.*, sites.slug AS slug, sites.server_id AS server_id FROM cron_jobs LEFT JOIN sites ON sites.id = cron_jobs.site_id WHERE cron_jobs.run_as_user=${db.sql(user)}`).map((job) => ({
     ...job,
     slug: job.slug || 'server',
     enabled: job.enabled !== 0,
   }));
 }
 
+function serverIdForCronJob(job) {
+  return job.server_id || 'local';
+}
+
 async function syncCrontab(user) {
-  await agentClient.invoke('writeCrontab', user, cronJobsForUser(user));
+  const jobs = cronJobsForUser(user);
+  const grouped = new Map();
+  for (const job of jobs) {
+    const serverId = serverIdForCronJob(job);
+    if (!grouped.has(serverId)) grouped.set(serverId, []);
+    grouped.get(serverId).push(job);
+  }
+  if (!grouped.size) grouped.set('local', []);
+  for (const [serverId, serverJobs] of grouped) {
+    await agentClient.forServer(serverId).invoke('writeCrontab', user, serverJobs);
+  }
 }
 
 async function handleCron(request, response, pathname) {

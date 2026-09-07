@@ -15,16 +15,20 @@ function recordBackup(siteId, result) {
   db.run(`INSERT INTO backups (id,site_id,destination,path,size,status,created_at) VALUES (${db.sql(crypto.randomUUID())},${db.sql(siteId)},${db.sql(result.destination || 'local')},${db.sql(result.path)},${result.size || 0},'succeeded',${db.sql(now())})`);
 }
 
+function agentForPayload(payload) {
+  return agentClient.forServer(payload.server_id || payload.site?.server_id || 'local');
+}
+
 const handlers = {
   async deploy(payload) {
-    const result = await agentClient.invoke('cloneRepository', payload.slug, payload.repo_url);
+    const result = await agentForPayload(payload).invoke('cloneRepository', payload.slug, payload.repo_url);
     const output = `${result.stdout || ''}${result.stderr || ''}`.slice(-4000) || 'Repository cloned successfully';
     db.run(`UPDATE deployments SET status='succeeded', log=${db.sql(output)} WHERE id=${db.sql(payload.deployment_id)}`);
     log('Deployment succeeded', payload.slug, 'Git SSH deploy');
     return result;
   },
   async backup(payload) {
-    const result = await agentClient.invoke('createBackup', payload.site, payload.databases || [], payload.retention || {}, { destination: payload.destination || 'local', credentials: payload.credentials || {} });
+    const result = await agentForPayload(payload).invoke('createBackup', payload.site, payload.databases || [], payload.retention || {}, { destination: payload.destination || 'local', credentials: payload.credentials || {} });
     recordBackup(payload.site.id, result);
     log('Backup completed', payload.site.name || payload.site.slug, result.path);
     return result;
@@ -33,13 +37,13 @@ const handlers = {
     const secrets = require('./secrets');
     const database = { ...payload.database };
     if (payload.password_ciphertext) database.password = secrets.decrypt(payload.password_ciphertext);
-    const result = await agentClient.invoke('dumpDatabase', database, payload.destination, database.password || null);
+    const result = await agentForPayload(payload).invoke('dumpDatabase', database, payload.destination, database.password || null);
     recordBackup(payload.site_id, result);
     log('Database dump completed', payload.database.db_name, result.path);
     return result;
   },
   async install(payload) {
-    const output = await agentClient.invoke('installSite', payload.site);
+    const output = await agentForPayload(payload).invoke('installSite', payload.site);
     log('Install commands completed', payload.site.name || payload.site.slug);
     return { output };
   },

@@ -151,12 +151,20 @@ else
   DEFAULT_PHP="${PANEL_PHP_VERSION:-}"
 fi
 
-install -d -m 0755 /opt/iqpanel
+APP_ROOT=/opt/iqpanel
+systemctl stop iqpanel.service iqpanel-agent.service 2>/dev/null || true
 install -d -m 0750 /var/lib/iqpanel /var/www/sites /etc/panel-agent /var/log/panel /var/backups/panel
 id panel >/dev/null 2>&1 || useradd --system --home /var/lib/iqpanel --shell /usr/sbin/nologin panel
-cp -a "${SOURCE_DIR}/." /opt/iqpanel/
-chown -R root:root /opt/iqpanel
-chmod -R go-w /opt/iqpanel
+
+SOURCE_REAL="$(readlink -f "${SOURCE_DIR}")"
+APP_REAL="$(readlink -f "${APP_ROOT}" 2>/dev/null || true)"
+if [[ "${SOURCE_REAL}" != "${APP_REAL}" ]]; then
+  rm -rf "${APP_ROOT}"
+  install -d -m 0755 "${APP_ROOT}"
+  cp -a "${SOURCE_DIR}/." "${APP_ROOT}/"
+fi
+chown -R root:root "${APP_ROOT}"
+chmod -R go-w "${APP_ROOT}"
 chown -R panel:panel /var/lib/iqpanel /var/www/sites /var/log/panel /var/backups/panel
 
 if [[ -f /etc/nginx/nginx.conf ]] && ! grep -q 'sites-enabled' /etc/nginx/nginx.conf; then

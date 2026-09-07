@@ -211,7 +211,9 @@ chown root:panel /etc/panel-agent/env
 install -m 0644 "${SOURCE_DIR}/installer/iqpanel.service" /etc/systemd/system/iqpanel.service
 install -m 0644 "${SOURCE_DIR}/installer/iqpanel-agent.service" /etc/systemd/system/iqpanel-agent.service
 systemctl daemon-reload
-systemctl enable --now iqpanel-agent.service iqpanel.service
+systemctl enable --now iqpanel-agent.service
+chown -R panel:panel /var/lib/iqpanel /var/www/sites /var/log/panel /var/backups/panel
+systemctl enable --now iqpanel.service
 
 echo "iQPanel is running on http://127.0.0.1:4173 (localhost only)."
 echo "Access from your machine with: ssh -L 4173:127.0.0.1:4173 user@this-server"

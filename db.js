@@ -124,4 +124,23 @@ run(`CREATE TABLE IF NOT EXISTS webhook_deliveries (
   created_at TEXT NOT NULL
 )`);
 
+function ensurePanelOwnership() {
+  if (typeof process.getuid !== 'function' || process.getuid() !== 0) return;
+  try {
+    execFileSync('id', ['panel'], { stdio: 'ignore' });
+  } catch {
+    return;
+  }
+  const files = [dbPath, `${dbPath}-journal`, `${dbPath}-wal`, `${dbPath}-shm`];
+  for (const file of files) {
+    if (!fs.existsSync(file)) continue;
+    try {
+      execFileSync('chown', ['panel:panel', file], { stdio: 'ignore' });
+      fs.chmodSync(file, 0o660);
+    } catch {}
+  }
+}
+
+ensurePanelOwnership();
+
 module.exports = { root, dbPath, sql, run, rows };

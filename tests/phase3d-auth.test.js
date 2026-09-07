@@ -124,6 +124,13 @@ test('privileged site delete requires re-auth and writes an audit row', async ()
   assert.ok(audit.items.some((item) => item.target === 'Reauth Site' && item.user_id));
 });
 
+test('panel self-update requires re-authentication', async () => {
+  const owner = await login({ password });
+  const denied = await fetch(`${base}/api/system/update`, { method: 'POST', headers: { cookie: owner.cookie } });
+  assert.equal(denied.status, 403);
+  assert.equal((await denied.json()).reauth_required, true);
+});
+
 test('2FA enrollment is required on login and lockout trips after five failures', async () => {
   const owner = await login({ password });
   const created = await fetch(`${base}/api/users`, {

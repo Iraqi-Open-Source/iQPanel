@@ -57,6 +57,13 @@ async function handleSystem(request, response, pathname) {
     send(response, 202, { status: 'queued', job_id: job.id, pending: pending.length });
     return true;
   }
+  if (request.method === 'POST' && pathname === '/api/system/update') {
+    const existing = db.rows(`SELECT id FROM jobs WHERE type='panelUpdate' AND status IN ('queued','running') ORDER BY created_at ASC LIMIT 1`)[0];
+    const job = existing || queue.enqueue('panelUpdate', { server_id: 'local' }, { maxAttempts: 1 });
+    if (!existing) log('Panel update queued', 'panel', 'Iraqi-Open-Source/iQPanel@main');
+    send(response, 202, { status: 'queued', job_id: job.id, already_queued: Boolean(existing) });
+    return true;
+  }
   if (request.method === 'GET' && pathname === '/api/system/services') {
     const { publicSettings } = require('./http-settings');
     const packages = require('./packages');

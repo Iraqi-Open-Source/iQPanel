@@ -68,6 +68,7 @@ function needsReauth(method, pathname) {
   if (method === 'DELETE' && /^\/api\/sites\/[^/]+$/.test(pathname)) return true;
   if (method === 'POST' && /\/firewall$/.test(pathname)) return true;
   if (method === 'POST' && pathname === '/api/system/migrate-site-users') return true;
+  if (method === 'POST' && pathname === '/api/system/update') return true;
   if (method === 'POST' && pathname === '/api/system/packages/install') return true;
   if (method === 'POST' && pathname === '/api/system/php/install') return true;
   if (method === 'POST' && /^\/api\/system\/services\/[^/]+\/(start|stop|restart|enable|disable)$/.test(pathname)) return true;

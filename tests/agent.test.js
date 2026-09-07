@@ -9,6 +9,7 @@ const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'iqpanel-agent-'));
 process.env.PANEL_DATA_ROOT = dataRoot;
 process.env.PANEL_SITES_ROOT = path.join(dataRoot, 'sites');
 process.env.PANEL_SECRET_KEY = 'agent-test-secret';
+process.env.PANEL_APPLY_SYSTEM = '0';
 
 const agent = require('../ops');
 
@@ -72,6 +73,12 @@ test('apply mode stays off in generated-only environments', async () => {
   const result = await agent.applyNginxConfig(site);
   assert.equal(result.applied, false);
   assert.ok(fs.existsSync(result.path));
+});
+
+test('panel self-update is blocked in generated-only environments', async () => {
+  await assert.rejects(() => agent.updatePanel(), /PANEL_APPLY_SYSTEM=1/);
+  assert.equal(agent.validatePanelArchiveListing('iqpanel-main/app-http.js\niqpanel-main/installer/iqpanel.service\niqpanel-main/installer/iqpanel-agent.service\niqpanel-main/package.json\niqpanel-main/public/index.html\n'), 'iqpanel-main');
+  assert.throws(() => agent.validatePanelArchiveListing('../app-http.js'), /unsafe path/);
 });
 
 test('crontab rendering preserves foreign entries', () => {

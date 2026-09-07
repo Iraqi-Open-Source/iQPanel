@@ -41,3 +41,11 @@ test('components render accessible site markup', () => {
   assert.match(card, /data-site-action="deploy"/);
   assert.match(card, /8080/);
 });
+
+test('settings exposes the self-update control', () => {
+  const html = fs.readFileSync(path.join(publicDir, 'index.html'), 'utf8');
+  const app = fs.readFileSync(path.join(publicDir, 'app.js'), 'utf8');
+  assert.match(html, /id="settings-update"/);
+  assert.match(html, /id="settings-update-status"/);
+  assert.match(app, /\/api\/system\/update/);
+});

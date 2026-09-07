@@ -16,6 +16,7 @@ const server = spawn(process.execPath, ['app-http.js'], {
     PANEL_DATA_ROOT: dataRoot,
     PANEL_SITES_ROOT: path.join(dataRoot, 'sites'),
     PANEL_SECRET_KEY: 'api-test-secret',
+    PANEL_APPLY_SYSTEM: '0',
   },
   stdio: 'ignore',
 });
@@ -41,6 +42,15 @@ test('dashboard API starts with an empty persistent store', async () => {
   assert.deepEqual(dashboard.sites, []);
   assert.equal(dashboard.server.agent, 'online');
   assert.equal(typeof dashboard.server.cpu, 'number');
+});
+
+test('panel update requests are queued without changing generated-only installations', async () => {
+  const response = await fetch(`${base}/api/system/update`, { method: 'POST' });
+  assert.equal(response.status, 202);
+  const payload = await response.json();
+  const job = await waitForJob(payload.job_id);
+  assert.equal(job.status, 'failed');
+  assert.match(job.last_error, /PANEL_APPLY_SYSTEM=1/);
 });
 
 test('site creation persists a generated deploy key and rendered config', async () => {

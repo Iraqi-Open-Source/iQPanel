@@ -278,6 +278,113 @@ function command(program, args, options = {}) {
   });
 }
 
+const panelUpdateFiles = [
+  'app-http.js',
+  'installer/iqpanel.service',
+  'installer/iqpanel-agent.service',
+  'package.json',
+  'public/index.html',
+];
+
+function validatePanelArchiveListing(listing) {
+  const entries = new Set();
+  let topLevel = null;
+  for (const rawEntry of String(listing || '').split('\n')) {
+    const entry = rawEntry.trim().replace(/\/+$/, '');
+    if (!entry) continue;
+    if (entry.startsWith('/') || entry.includes('\\')) throw new Error('Panel update archive contains an unsafe path');
+    const parts = entry.split('/');
+    if (!topLevel) topLevel = parts[0];
+    if (parts.some((part) => !part || part === '.' || part === '..') || parts[0] !== topLevel) throw new Error('Panel update archive contains an unsafe path');
+    entries.add(entry);
+  }
+  if (!topLevel) throw new Error('Panel update archive is empty');
+  for (const required of panelUpdateFiles) {
+    if (!entries.has(`${topLevel}/${required}`)) throw new Error(`Panel update archive is missing ${required}`);
+  }
+  return topLevel;
+}
+
+function installPanelUnit(source, destination) {
+  const temporary = `${destination}.iqpanel-update-${process.pid}`;
+  fs.copyFileSync(source, temporary);
+  fs.chmodSync(temporary, 0o644);
+  fs.renameSync(temporary, destination);
+}
+
+function schedulePanelRestart() {
+  const script = 'const { spawnSync } = require("node:child_process"); setTimeout(() => { spawnSync("/usr/bin/systemctl", ["restart", "iqpanel-agent.service"], { stdio: "ignore" }); spawnSync("/usr/bin/systemctl", ["restart", "iqpanel.service"], { stdio: "ignore" }); }, 1500);';
+  const child = spawn(process.execPath, ['-e', script], { detached: true, stdio: 'ignore' });
+  child.unref();
+}
+
+async function updatePanel() {
+  if (!paths.applySystem) throw new Error('Panel self-update requires PANEL_APPLY_SYSTEM=1');
+
+  const repo = String(process.env.PANEL_UPDATE_REPO || 'Iraqi-Open-Source/iQPanel').trim();
+  const ref = String(process.env.PANEL_UPDATE_REF || 'main').trim();
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo)) throw new Error('Invalid panel update repository');
+  if (!/^[A-Za-z0-9._/-]+$/.test(ref) || ref.includes('..') || ref.startsWith('/') || ref.endsWith('/')) throw new Error('Invalid panel update ref');
+
+  const appRoot = path.resolve(process.env.PANEL_APP_ROOT || '/opt/iqpanel');
+  if (appRoot !== '/opt/iqpanel') throw new Error('Panel self-update is restricted to /opt/iqpanel');
+  const parent = path.dirname(appRoot);
+  const downloadRoot = fs.mkdtempSync('/tmp/iqpanel-update-');
+  const stageRoot = fs.mkdtempSync(path.join(parent, '.iqpanel-update-'));
+  const archive = path.join(downloadRoot, 'panel.tar.gz');
+  const extractRoot = path.join(stageRoot, 'extract');
+  const stagedApp = path.join(stageRoot, 'app');
+  const backupRoot = path.join(parent, `.iqpanel-previous-${Date.now()}-${process.pid}`);
+  let swapped = false;
+
+  try {
+    const [owner, name] = repo.split('/');
+    const encodedRef = ref.split('/').map((part) => encodeURIComponent(part)).join('/');
+    const url = `https://github.com/${owner}/${name}/archive/refs/heads/${encodedRef}.tar.gz`;
+    await command('curl', ['-fsSL', '--connect-timeout', '15', '--max-time', '120', '--retry', '2', url, '-o', archive]);
+    if (fs.statSync(archive).size > 50 * 1024 * 1024) throw new Error('Panel update archive is too large');
+    const listing = await command('tar', ['-tzf', archive]);
+    const topLevel = validatePanelArchiveListing(listing.stdout);
+    const details = await command('tar', ['-tvzf', archive]);
+    if (String(details.stdout || '').split('\n').some((line) => /^[lhbcps]/.test(line))) throw new Error('Panel update archive contains unsupported links');
+
+    fs.mkdirSync(extractRoot, { recursive: true, mode: 0o700 });
+    await command('tar', ['--no-same-owner', '--no-same-permissions', '-xzf', archive, '-C', extractRoot]);
+    const extracted = path.join(extractRoot, topLevel);
+    if (!fs.existsSync(extracted) || !fs.lstatSync(extracted).isDirectory()) throw new Error('Panel update archive has no application directory');
+    for (const required of panelUpdateFiles) {
+      const requiredPath = path.join(extracted, required);
+      if (!fs.existsSync(requiredPath) || !fs.lstatSync(requiredPath).isFile()) throw new Error(`Panel update file is invalid: ${required}`);
+    }
+    fs.renameSync(extracted, stagedApp);
+    await command('chown', ['-R', 'root:root', stagedApp]);
+    await command('chmod', ['-R', 'go-w', stagedApp]);
+
+    fs.mkdirSync(paths.systemdRoot(), { recursive: true, mode: 0o755 });
+    installPanelUnit(path.join(stagedApp, 'installer', 'iqpanel.service'), path.join(paths.systemdRoot(), 'iqpanel.service'));
+    installPanelUnit(path.join(stagedApp, 'installer', 'iqpanel-agent.service'), path.join(paths.systemdRoot(), 'iqpanel-agent.service'));
+    await command('systemctl', ['daemon-reload']);
+
+    if (fs.existsSync(appRoot)) {
+      if (!fs.lstatSync(appRoot).isDirectory()) throw new Error('Panel application root is not a directory');
+      fs.renameSync(appRoot, backupRoot);
+    }
+    fs.renameSync(stagedApp, appRoot);
+    swapped = true;
+    schedulePanelRestart();
+    return { updated: true, repo, ref, restart_scheduled: true };
+  } catch (error) {
+    if (swapped && fs.existsSync(backupRoot)) {
+      fs.rmSync(appRoot, { recursive: true, force: true });
+      fs.renameSync(backupRoot, appRoot);
+    }
+    throw error;
+  } finally {
+    fs.rmSync(downloadRoot, { recursive: true, force: true });
+    fs.rmSync(stageRoot, { recursive: true, force: true });
+  }
+}
+
 function createSite(slug) {
   const directory = sitePath(slug);
   const sshDirectory = path.join(directory, '.ssh');
@@ -523,6 +630,8 @@ module.exports = {
   listSystemdUnits,
   controlSystemUnit,
   command,
+  validatePanelArchiveListing,
+  updatePanel,
   siteUserName,
   applySiteOwnership,
   migrateSiteUser,

@@ -449,6 +449,24 @@
     $("#alerts-status").textContent = `${alerts.discord_configured ? "Discord" : "No Discord"} · ${alerts.telegram_configured ? "Telegram" : "No Telegram"}`;
   };
 
+  const updatePanel = async () => {
+    const button = $("#settings-update");
+    const status = $("#settings-update-status");
+    if (!button || button.disabled) return;
+    if (!window.confirm("Update iQPanel from GitHub and restart the dashboard?")) return;
+    button.disabled = true;
+    if (status) status.textContent = "Queuing…";
+    try {
+      await api("/api/system/update", { method: "POST", body: "{}" });
+      if (status) status.textContent = "Queued";
+      showToast("Panel update queued. The dashboard will restart shortly.");
+    } catch (error) {
+      button.disabled = false;
+      if (status) status.textContent = "Unavailable";
+      showToast(error.message);
+    }
+  };
+
   const runSiteAction = async (action, slug) => {
     if (action === "delete") {
       if (!window.confirm("Delete this site and its agent resources?")) return;
@@ -647,6 +665,7 @@
       const el = $(sel);
       if (el) el.addEventListener("click", logout);
     });
+    $("#settings-update")?.addEventListener("click", updatePanel);
 
     $("#site-search")?.addEventListener("input", applySiteFilter);
     $("#site-filter-tabs")?.addEventListener("click", (event) => {

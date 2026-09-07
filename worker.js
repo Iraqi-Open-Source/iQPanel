@@ -84,6 +84,11 @@ const handlers = {
     log('PHP installation completed', payload.version);
     return result;
   },
+  async panelUpdate() {
+    const result = await agentClient.invoke('updatePanel');
+    log('Panel update completed', 'panel', `${result.repo}@${result.ref}`);
+    return result;
+  },
 };
 
 let busy = false;

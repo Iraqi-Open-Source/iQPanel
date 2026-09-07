@@ -127,6 +127,24 @@ async function cloneRepository(slug, repoUrl) {
   return command('git', ['clone', repoUrl, appPath], { env: { ...process.env, GIT_SSH_COMMAND: `ssh -i ${keyPath} -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new` } });
 }
 
+async function repositoryHead(slug) {
+  const appPath = path.join(sitePath(slug), 'app');
+  if (!fs.existsSync(path.join(appPath, '.git'))) return { sha: null };
+  const result = await command('git', ['-C', appPath, 'rev-parse', 'HEAD']);
+  return { sha: (result.stdout || '').trim() || null };
+}
+
+async function checkoutRepository(slug, sha) {
+  const normalized = String(sha || '').trim();
+  if (!/^[0-9a-f]{7,40}$/i.test(normalized)) throw new Error('Invalid commit SHA');
+  const appPath = path.join(sitePath(slug), 'app');
+  if (!fs.existsSync(path.join(appPath, '.git'))) throw new Error('Repository not initialized');
+  await command('git', ['-C', appPath, 'cat-file', '-e', `${normalized}^{commit}`]);
+  await command('git', ['-C', appPath, 'checkout', '--detach', normalized]);
+  const head = await command('git', ['-C', appPath, 'rev-parse', 'HEAD']);
+  return { sha: (head.stdout || '').trim() };
+}
+
 function nginxTemplateVars(site) {
   const listenPort = nginxListenPort(site);
   return {
@@ -245,6 +263,8 @@ async function removeSite(slug, options = {}) {
 module.exports = {
   createSite,
   cloneRepository,
+  repositoryHead,
+  checkoutRepository,
   writeNginxConfig,
   writePhpPool,
   writeSystemdTemplate,

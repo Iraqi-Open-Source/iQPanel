@@ -81,12 +81,12 @@ Depends on: Phase 2 multi-server registry (shipped).
 
 Depends on: 3A (for remote-server deploys).
 
-- [ ] `POST /api/webhooks/github/:siteId` with HMAC verification
-- [ ] Record `commit_sha` and full log on clone/pull completion
-- [ ] `POST /api/sites/:slug/deployments/:id/rollback`
-- [ ] Optional deploy branch/tag filter per site
-- [ ] Dashboard deploy history with rollback action
-- [ ] Tests: webhook signatures, rollback to missing SHA, concurrent deploy dedup
+- [x] `POST /api/webhooks/github/:siteId` with HMAC verification
+- [x] Record `commit_sha` and full log on clone/pull completion
+- [x] `POST /api/sites/:slug/deployments/:id/rollback`
+- [x] Optional deploy branch/tag filter per site
+- [x] Dashboard deploy history with rollback action
+- [x] Tests: webhook signatures, rollback to missing SHA, concurrent deploy dedup
 
 ## Phase 3C — Per-site OS users
 

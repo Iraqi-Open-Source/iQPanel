@@ -21,6 +21,15 @@ function body(request) {
   });
 }
 
+function rawBody(request, limit = 5e6) {
+  return new Promise((resolve, reject) => {
+    let value = '';
+    request.on('data', (chunk) => { value += chunk; if (value.length > limit) request.destroy(); });
+    request.on('end', () => resolve(value));
+    request.on('error', reject);
+  });
+}
+
 function send(response, status, payload, headers = {}) {
   response.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store', ...headers });
   response.end(JSON.stringify(payload));
@@ -47,5 +56,5 @@ function siteAgent(site) {
 }
 
 module.exports = {
-  body, send, getSite, log, slugify, publicDatabase, siteAgent, sessions, loginAttempts, now, id, publicRoot, crypto, db, secrets, queue, agentClient,
+  body, rawBody, send, getSite, log, slugify, publicDatabase, siteAgent, sessions, loginAttempts, now, id, publicRoot, crypto, db, secrets, queue, agentClient,
 };

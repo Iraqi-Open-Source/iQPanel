@@ -1,6 +1,6 @@
 const { send, getSite, log, slugify, now, id, db, siteAgent } = require('./http-shared');
 const { allocatePorts } = require('./ports');
-const queue = require('./queue');
+const { queueDeploy } = require('./deployments');
 
 async function applySiteConfig(site) {
   const agent = siteAgent(site);
@@ -73,7 +73,12 @@ async function handleSites(request, response, pathname) {
   if (!siteMatch) return false;
   const site = getSite(siteMatch[1]);
   if (!site) { send(response, 404, { error: 'Site not found' }); return true; }
-  if (request.method === 'GET' && !siteMatch[2]) { send(response, 200, site); return true; }
+  if (request.method === 'GET' && !siteMatch[2]) {
+    const { deployConfig } = require('./deployments');
+    const host = request.headers.host || 'localhost';
+    send(response, 200, { ...site, ...deployConfig(site, host) });
+    return true;
+  }
   if (request.method === 'PATCH' && !siteMatch[2]) {
     const input = await require('./http-shared').body(request);
     const name = input.name ? String(input.name).trim() : site.name;
@@ -96,11 +101,13 @@ async function handleSites(request, response, pathname) {
     return true;
   }
   if (request.method === 'POST' && siteMatch[2] === 'deploy') {
-    const deploymentId = id();
-    db.run(`INSERT INTO deployments (id,site_id,status,log,created_at) VALUES (${db.sql(deploymentId)},${db.sql(site.id)},'queued','Clone job queued by admin',${db.sql(now())})`);
-    const job = queue.enqueue('deploy', { slug: site.slug, repo_url: site.repo_url, deployment_id: deploymentId, server_id: site.server_id || 'local' });
-    log('Deployment queued', site.name, 'Git SSH deploy');
-    send(response, 202, { status: 'queued', job_id: job.id, deployment_id: deploymentId });
+    const queued = queueDeploy(site, { triggered_by: 'admin' });
+    log('Deployment queued', site.name, queued.deduplicated ? 'deduplicated' : 'Git SSH deploy');
+    send(response, queued.deduplicated ? 200 : 202, {
+      status: queued.deduplicated ? 'deduplicated' : 'queued',
+      job_id: queued.job?.id || null,
+      deployment_id: queued.deployment_id,
+    });
     return true;
   }
   if (request.method === 'POST' && siteMatch[2] === 'backup') {

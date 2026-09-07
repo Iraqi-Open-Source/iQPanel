@@ -80,7 +80,7 @@ async function handleAuth(request, response, pathname) {
     send(response, 200, { ok: true }, { 'set-cookie': `iqpanel_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0${secureCookie(request)}` });
     return true;
   }
-  if (authRequired() && !sessionUser(request) && pathname.startsWith('/api/')) {
+  if (authRequired() && !sessionUser(request) && pathname.startsWith('/api/') && !pathname.startsWith('/api/webhooks/')) {
     send(response, 401, { error: 'Authentication required' });
     return true;
   }

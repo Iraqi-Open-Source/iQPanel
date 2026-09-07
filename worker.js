@@ -1,7 +1,7 @@
-const path = require('node:path');
 const db = require('./db');
 const queue = require('./queue');
 const agentClient = require('./agent-client');
+const { applySiteConfig } = require('./http-site-create');
 
 const now = () => new Date().toISOString();
 
@@ -22,10 +22,21 @@ function agentForPayload(payload) {
 const handlers = {
   async deploy(payload) {
     const result = await agentForPayload(payload).invoke('cloneRepository', payload.slug, payload.repo_url);
+    const head = await agentForPayload(payload).invoke('repositoryHead', payload.slug);
     const output = `${result.stdout || ''}${result.stderr || ''}`.slice(-4000) || 'Repository cloned successfully';
-    db.run(`UPDATE deployments SET status='succeeded', log=${db.sql(output)} WHERE id=${db.sql(payload.deployment_id)}`);
-    log('Deployment succeeded', payload.slug, 'Git SSH deploy');
-    return result;
+    db.run(`UPDATE deployments SET status='succeeded', commit_sha=${db.sql(head.sha)}, log=${db.sql(output)} WHERE id=${db.sql(payload.deployment_id)}`);
+    log('Deployment succeeded', payload.slug, head.sha || 'Git SSH deploy');
+    return { ...result, commit_sha: head.sha };
+  },
+  async rollback(payload) {
+    const site = payload.site || db.rows(`SELECT * FROM sites WHERE id=${db.sql(payload.site_id)}`)[0];
+    if (!site) throw new Error('Site not found for rollback');
+    const checkout = await agentForPayload(payload).invoke('checkoutRepository', payload.slug, payload.commit_sha);
+    const applied = await applySiteConfig(site);
+    const message = `Rolled back to ${checkout.sha}; config ${applied.status}`;
+    db.run(`UPDATE deployments SET status='succeeded', commit_sha=${db.sql(checkout.sha)}, log=${db.sql(message)} WHERE id=${db.sql(payload.deployment_id)}`);
+    log('Rollback succeeded', payload.slug, checkout.sha);
+    return { checkout, applied };
   },
   async backup(payload) {
     const result = await agentForPayload(payload).invoke('createBackup', payload.site, payload.databases || [], payload.retention || {}, { destination: payload.destination || 'local', credentials: payload.credentials || {} });
@@ -62,7 +73,7 @@ async function tick() {
       const result = await handler(JSON.parse(job.payload || '{}'));
       queue.complete(job.id, result);
     } catch (error) {
-      if (job.type === 'deploy') {
+      if (job.type === 'deploy' || job.type === 'rollback') {
         try {
           const payload = JSON.parse(job.payload || '{}');
           db.run(`UPDATE deployments SET status='failed', log=${db.sql(error.message)} WHERE id=${db.sql(payload.deployment_id)}`);

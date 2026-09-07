@@ -98,5 +98,14 @@ ensureColumn('sites', 'node_version', 'TEXT');
 ensureColumn('sites', 'python_version', 'TEXT');
 ensureColumn('sites', 'public_access', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('backups', 'details', "TEXT NOT NULL DEFAULT ''");
+ensureColumn('sites', 'deploy_branch', "TEXT NOT NULL DEFAULT 'main'");
+ensureColumn('sites', 'webhook_secret_ciphertext', "TEXT NOT NULL DEFAULT ''");
+
+run(`CREATE TABLE IF NOT EXISTS webhook_deliveries (
+  id TEXT PRIMARY KEY,
+  site_id TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
+  delivery_id TEXT NOT NULL UNIQUE,
+  created_at TEXT NOT NULL
+)`);
 
 module.exports = { root, dbPath, sql, run, rows };

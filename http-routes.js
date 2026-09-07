@@ -16,6 +16,8 @@ const { handleSiteExtras } = require('./http-site-extras');
 const { handleFiles } = require('./http-files');
 const { handleWordpress } = require('./http-wordpress');
 const { handleSystem } = require('./http-system');
+const { handleWebhooks } = require('./http-webhooks');
+const { handleDeployments } = require('./http-deployments');
 
 const publicDir = path.join(publicRoot, 'public');
 const staticExtensions = new Set(['.html', '.css', '.js', '.svg', '.png', '.ico', '.woff2']);
@@ -24,6 +26,7 @@ async function handleRequest(request, response) {
   const url = new URL(request.url, `http://${request.headers.host || 'localhost'}`);
   if (await handleAuth(request, response, url.pathname)) return;
   if (url.pathname.startsWith('/api/')) {
+    if (await handleWebhooks(request, response, url.pathname)) return;
     if (await handleRuntimes(request, response, url.pathname)) return;
     if (await handleDocker(request, response, url.pathname)) return;
     if (await handleServers(request, response, url.pathname)) return;
@@ -37,6 +40,7 @@ async function handleRequest(request, response) {
     if (await handleSiteExtras(request, response, url.pathname)) return;
     if (await handleFiles(request, response, url.pathname)) return;
     if (await handleWordpress(request, response, url.pathname)) return;
+    if (await handleDeployments(request, response, url.pathname, url.host)) return;
     if (await handleSites(request, response, url.pathname)) return;
     send(response, 404, { error: 'Not found' });
     return;
@@ -58,7 +62,7 @@ async function handleRequest(request, response) {
   }
   const types = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.woff2': 'font/woff2' };
   if (path.basename(filePath) === 'index.html') {
-    const html = fs.readFileSync(filePath, 'utf8').replace('</body>', '<script src="/phase2.js"></script><script src="/phase3a.js"></script></body>');
+    const html = fs.readFileSync(filePath, 'utf8').replace('</body>', '<script src="/phase2.js"></script><script src="/phase3a.js"></script><script src="/phase3b.js"></script></body>');
     response.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
     response.end(html);
     return;

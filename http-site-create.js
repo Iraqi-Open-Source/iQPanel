@@ -1,6 +1,7 @@
 const { send, getSite, log, slugify, now, id, db, siteAgent, body } = require('./http-shared');
 const { allocatePorts } = require('./ports');
 const { resolveServerId } = require('./servers');
+const { ensureWebhookSecret, deployConfig } = require('./deployments');
 
 async function applySiteConfig(site) {
   const agent = siteAgent(site);
@@ -48,9 +49,16 @@ async function handleSiteCreate(request, response, pathname) {
   };
   const key = await siteAgent(site).invoke('createSite', slug);
   db.run(`INSERT INTO sites (id,name,slug,type,repo_url,deploy_key_path,deploy_key_public,port,app_port,webserver,runtime_version,server_id,status,config_status,created_at,updated_at) VALUES (${db.sql(site.id)},${db.sql(site.name)},${db.sql(site.slug)},${db.sql(site.type)},${db.sql(site.repo_url)},${db.sql(key.keyPath)},${db.sql(key.publicKey)},${site.port},${site.app_port},${db.sql(webserver)},${db.sql(site.runtime_version)},${db.sql(server_id)},'online','pending',${db.sql(created)},${db.sql(created)})`);
+  ensureWebhookSecret(site.id);
   const applied = await applySiteConfig(site);
   log('Site created', name, `Deploy key generated for ${slug}`);
-  send(response, 201, { ...site, config_status: applied.status, deploy_key_public: key.publicKey });
+  const createdSite = getSite(slug);
+  send(response, 201, {
+    ...createdSite,
+    config_status: applied.status,
+    deploy_key_public: key.publicKey,
+    ...deployConfig(createdSite, request.headers.host || 'localhost'),
+  });
   return true;
 }
 

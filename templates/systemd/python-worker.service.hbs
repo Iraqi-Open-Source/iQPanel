@@ -1,0 +1,13 @@
+[Unit]
+Description=Python worker - {{slug}}
+After=network.target
+
+[Service]
+User={{run_as_user}}
+WorkingDirectory={{site_path}}/app
+ExecStart={{site_path}}/venv/bin/python {{entrypoint}}
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

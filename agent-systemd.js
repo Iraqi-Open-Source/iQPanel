@@ -7,6 +7,10 @@ const apply = require('./agent-apply');
 const systemdTemplates = {
   'laravel-queue': 'systemd/laravel-queue.service.hbs',
   fastapi: 'systemd/fastapi.service.hbs',
+  horizon: 'systemd/horizon.service.hbs',
+  gunicorn: 'systemd/gunicorn.service.hbs',
+  celery: 'systemd/celery.service.hbs',
+  'python-worker': 'systemd/python-worker.service.hbs',
   node: 'systemd/node.service.hbs',
   aspnet: 'systemd/aspnet.service.hbs',
 };
@@ -24,6 +28,7 @@ function writeSystemdTemplate(site, template, sitePath) {
     run_as_user: site.run_as_user || require('./site-user').siteUserName(site.slug),
     site_path: sitePath(site.slug),
     entrypoint: site.entrypoint || 'dist/main.js',
+    python_module: site.python_module || 'app',
   }), { mode: 0o640 });
   return { filePath, template: template || 'laravel-queue', unitName: `panel-${site.slug}-${template || 'laravel-queue'}` };
 }

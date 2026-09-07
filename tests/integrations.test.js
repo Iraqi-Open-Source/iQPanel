@@ -15,6 +15,7 @@ const secrets = require('../secrets');
 const alerts = require('../alerts');
 const integrations = require('../agent-integrations');
 const agent = require('../agent');
+const { writeSystemdTemplate } = require('../agent-systemd');
 const { PACKAGE_ALLOWLIST } = require('../http-installer');
 
 test('host integrations stay generated-only in local mode', async () => {
@@ -73,4 +74,15 @@ test('file uploads and WordPress restores remain confined and rollback on archiv
 test('service installer exposes only the package allowlist', () => {
   assert.equal(PACKAGE_ALLOWLIST.has('nginx'), true);
   assert.equal(PACKAGE_ALLOWLIST.has('bash -c id'), false);
+});
+
+test('all documented Python and Laravel systemd templates render', () => {
+  const site = { slug: 'template-site', runtime_version: '8.3', app_port: 8123, run_as_user: 'iqpanel-template-site', entrypoint: 'worker.py', python_module: 'config.wsgi' };
+  for (const template of ['horizon', 'gunicorn', 'celery', 'python-worker']) {
+    const rendered = writeSystemdTemplate(site, template, agent.sitePath);
+    assert.ok(fs.existsSync(rendered.filePath));
+    const content = fs.readFileSync(rendered.filePath, 'utf8');
+    assert.match(content, /User=iqpanel-template-site/);
+    assert.match(content, /8123|php8\.3|config\.wsgi|worker\.py/);
+  }
 });

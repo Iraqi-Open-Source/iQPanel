@@ -60,7 +60,7 @@
     if (serviceButton && !document.getElementById('service-template-select')) {
       const select = document.createElement('select');
       select.id = 'service-template-select';
-      [['laravel-queue', 'Laravel queue'], ['fastapi', 'FastAPI'], ['node', 'Node app'], ['aspnet', 'ASP.NET']].forEach(([value, label]) => {
+       [['laravel-queue', 'Laravel queue'], ['horizon', 'Laravel Horizon'], ['fastapi', 'FastAPI'], ['gunicorn', 'Gunicorn'], ['celery', 'Celery'], ['python-worker', 'Python worker'], ['node', 'Node app'], ['aspnet', 'ASP.NET']].forEach(([value, label]) => {
         const option = document.createElement('option');
         option.value = value;
         option.textContent = label;

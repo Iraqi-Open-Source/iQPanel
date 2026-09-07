@@ -639,7 +639,8 @@
     $("#create-service-button")?.addEventListener("click", async () => {
       const slug = state.servicesSiteSlug || $("#services-site-select")?.value;
       if (!slug) return;
-      await api(`/api/sites/${encodeURIComponent(slug)}/services`, { method: "POST", body: JSON.stringify({ template: "laravel-queue" }) });
+      const template = $("#service-template-select")?.value || "laravel-queue";
+      await api(`/api/sites/${encodeURIComponent(slug)}/services`, { method: "POST", body: JSON.stringify({ template }) });
       showToast("Service created");
       await loadServices();
     });

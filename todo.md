@@ -59,7 +59,7 @@ Status reflects Phase 1 and Phase 2 work against `opensource-server-panel-plan.m
 - [x] Apache support (vhost templates, apply/rollback, site create)
 - [x] PostgreSQL support (grants SQL, dump, API engine)
 - [x] Multiple PHP/Node versions (`/api/runtimes`, site `runtime_version`)
-- [x] Extra systemd templates: FastAPI, Node, ASP.NET
+- [x] Extra systemd templates: FastAPI, Laravel Horizon, Gunicorn, Celery, Python worker, Node, ASP.NET
 - [x] Docker management (`/api/docker`, compose, honest unavailable status)
 - [x] Remote backup destinations (FTP via curl, Telegram chunked uploads)
 - [x] Web terminal (`/api/terminal`, audited start/end)

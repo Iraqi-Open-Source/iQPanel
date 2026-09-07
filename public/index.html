@@ -138,7 +138,7 @@
              <div class="page-heading"><div><p class="eyebrow">WORKSPACE / FILES</p><h1>Site files<span class="heading-period">.</span></h1><p class="subheading">Edit files inside a site app root through the Agent.</p></div></div>
              <div class="toolbar"><label class="search-box logs-site-label">Site<select id="files-site-select"></select></label><label class="search-box logs-site-label">Directory<input id="files-path" value="." placeholder="storage" /></label><button class="secondary-button" type="button" id="files-refresh">Refresh</button><label class="secondary-button">Upload<input id="files-upload" type="file" hidden /></label></div>
              <div class="content-grid"><section class="panel"><div class="data-list" id="files-list"></div></section><section class="panel"><div class="panel-heading"><div><h2 id="file-editor-title">Select a file</h2><p>Changes are written through the root Agent.</p></div><button class="primary-button" type="button" id="file-save" disabled>Save</button></div><textarea id="file-editor" rows="20" spellcheck="false" disabled></textarea></section></div>
-             <div class="panel" style="margin-top: 1rem"><div class="panel-heading"><div><h2>WordPress</h2><p>Allowlisted WP-CLI operations for this site.</p></div><div class="row-actions"><button class="secondary-button" type="button" data-wp-action="plugins">Plugins</button><button class="secondary-button" type="button" data-wp-action="themes">Themes</button><button class="secondary-button" type="button" data-wp-action="version">Check version</button></div></div><pre id="wordpress-output" class="logs-output"></pre></div>
+             <div class="panel" style="margin-top: 1rem"><div class="panel-heading"><div><h2>WordPress</h2><p>Allowlisted WP-CLI operations for this site.</p></div><div class="row-actions"><button class="secondary-button" type="button" data-wp-action="install">Install</button><button class="secondary-button" type="button" data-wp-action="staging">Staging clone</button><button class="secondary-button" type="button" data-wp-action="backup">Backup</button><button class="secondary-button" type="button" data-wp-action="restore">Restore</button><button class="secondary-button" type="button" data-wp-action="plugins">Plugins</button><button class="secondary-button" type="button" data-wp-action="plugin_activate">Activate plugin</button><button class="secondary-button" type="button" data-wp-action="plugin_deactivate">Deactivate plugin</button><button class="secondary-button" type="button" data-wp-action="themes">Themes</button><button class="secondary-button" type="button" data-wp-action="theme_activate">Activate theme</button><button class="secondary-button" type="button" data-wp-action="theme_deactivate">Deactivate theme</button><button class="secondary-button" type="button" data-wp-action="version">Check version</button></div></div><pre id="wordpress-output" class="logs-output"></pre></div>
            </section>
 
           <section class="view" id="logs-view">
@@ -215,8 +215,18 @@
                 <button class="secondary-button" type="button" id="settings-2fa">Set up two-factor</button>
                 <button class="secondary-button" type="button" id="settings-logout">Sign out</button>
               </div>
-            </div>
-            <div class="settings-panel panel" id="team-panel">
+             </div>
+             <div class="settings-panel panel" id="alerts-panel">
+               <div class="panel-heading"><div><h2>Alert delivery</h2><p>Notify Discord or Telegram when host thresholds are exceeded.</p></div><span class="badge" id="alerts-status">Not loaded</span></div>
+               <form id="alerts-form">
+                 <div class="form-row"><label>CPU threshold (%)<input name="cpu" type="number" min="1" max="100" required /></label><label>Memory threshold (%)<input name="memory" type="number" min="1" max="100" required /></label></div>
+                 <div class="form-row"><label>Disk threshold (%)<input name="disk" type="number" min="1" max="100" required /></label><label>Cooldown (minutes)<input name="cooldown_minutes" type="number" min="1" max="10080" required /></label></div>
+                 <label>Discord webhook <span class="optional">leave blank to keep current</span><input name="discord_webhook" type="url" placeholder="https://discord.com/api/webhooks/..." /></label>
+                 <div class="form-row"><label>Telegram bot token <span class="optional">leave blank to keep current</span><input name="telegram_bot_token" type="password" autocomplete="new-password" /></label><label>Telegram chat ID<input name="telegram_chat_id" placeholder="-100..." /></label></div>
+                 <div class="modal-actions"><button class="primary-button" type="submit">Save alert settings</button></div>
+               </form>
+             </div>
+             <div class="settings-panel panel" id="team-panel">
               <div class="panel-heading"><div><h2>Team members</h2><p>Owners and admins can invite operators and read-only users.</p></div></div>
               <div class="data-list" id="team-list"></div>
               <form id="team-form">

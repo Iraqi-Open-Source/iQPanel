@@ -7,10 +7,26 @@ const { createSystemdHelpers } = require('./agent-systemd');
 const { createDockerHelpers } = require('./agent-docker');
 const net = require('./agent-net');
 const remote = require('./backup-remote');
+const integrations = require('./agent-integrations');
 
 const apache = createApacheHelpers(base.sitePath, base.command);
 const systemd = createSystemdHelpers(base.sitePath, base.command);
 const docker = createDockerHelpers(base.command, base.sitePath);
+
+const integrationActions = {
+  writeOpenLiteSpeedConfig: integrations.writeOpenLiteSpeedConfig,
+  applyOpenLiteSpeedConfig: (site) => integrations.applyOpenLiteSpeedConfig(site, base.command),
+  controlOpenLiteSpeed: (action) => integrations.controlOpenLiteSpeed(action, base.command),
+  configureFail2Ban: () => integrations.configureFail2Ban(base.command),
+  fail2banStatus: () => integrations.fail2banStatus(base.command),
+  fail2banAction: (action, jail, ip) => integrations.fail2banAction(action, jail, ip, base.command),
+  swap: (action, size) => integrations.swap(action, size, base.command),
+  extendDisk: (device, mode, confirm) => integrations.extendDisk(device, mode, confirm, base.command),
+  manageAuthorizedKey: integrations.manageAuthorizedKey,
+  configureMail: (domain) => integrations.configureMail(domain, base.command),
+  mailStatus: () => integrations.mailStatus(base.command),
+  installPhpMyAdmin: (domain) => integrations.installPhpMyAdmin(domain, base.command),
+};
 
 async function provisionDatabase(input) {
   const engine = String(input.engine || 'mysql').toLowerCase();
@@ -56,6 +72,7 @@ module.exports = {
   ...apache,
   ...systemd,
   ...docker,
+  ...integrationActions,
   provisionDatabase,
   dumpDatabase,
   createBackup,

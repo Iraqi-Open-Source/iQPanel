@@ -16,6 +16,13 @@
 
   const boot = () => {
     const typeSelect = document.querySelector('#new-site-form select[name="type"]');
+    const webserverSelect = document.querySelector('#new-site-form select[name="server"]');
+    if (webserverSelect && ![...webserverSelect.options].some((item) => item.value === 'openlitespeed')) {
+      const option = document.createElement('option');
+      option.value = 'openlitespeed';
+      option.textContent = 'OpenLiteSpeed';
+      webserverSelect.appendChild(option);
+    }
     if (typeSelect && ![...typeSelect.options].some((item) => item.value === 'docker')) {
       const option = document.createElement('option');
       option.value = 'docker';

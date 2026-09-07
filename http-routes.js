@@ -21,6 +21,7 @@ const { handleDeployments } = require('./http-deployments');
 const { handleUsers } = require('./http-users');
 const { handleAudit } = require('./http-audit');
 const { handleInstaller } = require('./http-installer');
+const { handleIntegrations } = require('./http-integrations');
 
 const publicDir = path.join(publicRoot, 'public');
 const staticExtensions = new Set(['.html', '.css', '.js', '.svg', '.png', '.ico', '.woff2']);
@@ -43,6 +44,7 @@ async function handleRequest(request, response) {
       if (await handleTerminal(request, response, url.pathname)) return;
       if (await handleSystem(request, response, url.pathname)) return;
       if (await handleInstaller(request, response, url.pathname)) return;
+      if (await handleIntegrations(request, response, url.pathname)) return;
       if (await handleData(request, response, url.pathname)) return;
       if (await handleCron(request, response, url.pathname)) return;
       if (await handleServices(request, response, url.pathname)) return;

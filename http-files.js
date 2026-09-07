@@ -7,12 +7,24 @@ function relativePath(request) {
 async function handleFiles(request, response, pathname) {
   const match = pathname.match(/^\/api\/sites\/([^/]+)\/files$/);
   const fileMatch = pathname.match(/^\/api\/sites\/([^/]+)\/files\/content$/);
-  if (!match && !fileMatch) return false;
-  const site = getSite((match || fileMatch)[1]);
+  const downloadMatch = pathname.match(/^\/api\/sites\/([^/]+)\/files\/download$/);
+  if (!match && !fileMatch && !downloadMatch) return false;
+  const site = getSite((match || fileMatch || downloadMatch)[1]);
   if (!site) { send(response, 404, { error: 'Site not found' }); return true; }
   if (fileMatch && request.method === 'GET') {
     const result = await siteAgent(site).invoke('readSiteFile', site.slug, relativePath(request));
     send(response, 200, result);
+    return true;
+  }
+  if (downloadMatch && request.method === 'GET') {
+    const result = await siteAgent(site).invoke('readSiteFile', site.slug, relativePath(request));
+    const filename = String(relativePath(request)).split('/').pop().replace(/[^A-Za-z0-9._-]/g, '_') || 'download';
+    response.writeHead(200, {
+      'content-type': 'application/octet-stream',
+      'content-disposition': `attachment; filename="${filename}"`,
+      'cache-control': 'no-store',
+    });
+    response.end(result.content);
     return true;
   }
   if (request.method === 'GET') {

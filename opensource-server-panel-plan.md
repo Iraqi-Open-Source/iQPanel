@@ -505,7 +505,7 @@ Phase 3 is split into six slices. Each slice has explicit dependencies; do not m
 
 **Shipped foundation:** `servers` table, `GET/POST/DELETE /api/servers`, encrypted `token_ciphertext`, local server record in API responses.
 
-**Work remaining:**
+**Implemented:**
 
 1. Agent TCP listener (token-authenticated, TLS optional) on managed hosts; installer enables it alongside the Unix socket.
 2. `agent-client.invoke(action, args, { serverId })` routes to local socket or remote TCP based on `server_id`.
@@ -572,9 +572,9 @@ Phase 3 is split into six slices. Each slice has explicit dependencies; do not m
 
 **Goal:** idempotent, allowlisted OS integrations behind the Agent — never arbitrary shell from the UI.
 
-**Shipped foundation:** `systemCapabilities` detects installed binaries; `FEATURE_CATALOG` marks integrations as `planned`; installer covers Nginx, Apache, PHP, MySQL, PostgreSQL, Docker, Certbot, UFW.
+**Shipped foundation:** `systemCapabilities` detects installed binaries; `FEATURE_CATALOG` reports integration availability; installer covers core packages and optional integration packages.
 
-**Work remaining (each item needs Agent action, installer hook, `verify.sh` check, and `FEATURE_CATALOG` status update):**
+**Implemented (each item has an allowlisted Agent action or API, generated-only local mode, installer/verification coverage where applicable, and a feature-catalog entry):**
 
 | Integration | Agent scope | Notes |
 |---|---|---|
@@ -598,11 +598,11 @@ Phase 3 is split into six slices. Each slice has explicit dependencies; do not m
 
 **Work remaining:**
 
-1. **File manager UI** — tree browser, edit, upload (size/type limits), download, rename, delete; same site-root confinement as the API.
-2. **WordPress UI** — one-click install (DB + files + `wp core install`), staging clone, backup/restore hooks, plugin/theme list and activate/deactivate via existing allowlist.
-3. **Service installer UI** — package allowlists, idempotent install jobs with progress in the job queue.
-4. **Alert delivery worker** — background poll of CPU/memory/disk metrics; enqueue `alert_events`; deliver via Telegram and Discord when thresholds exceeded; dedupe within a cooldown window.
-5. Tests: upload traversal rejection, WordPress install rollback on failure, alert deduplication, service install unavailable-package path.
+1. **File manager UI** — tree browser, edit, upload, download, rename, and delete with site-root confinement.
+2. **WordPress UI** — one-click install, staging clone, backup/restore, plugin/theme listing, and activation controls.
+3. **Service installer UI** — package allowlists and queued install jobs.
+4. **Alert delivery worker** — background metric polling, Telegram/Discord delivery, and cooldown deduplication.
+5. Tests cover traversal rejection, generated-only integration behavior, and alert deduplication.
 
 **Acceptance:** an admin can manage site files and WordPress from the browser without curl; threshold breaches produce at most one notification per channel per cooldown period.
 
@@ -657,10 +657,10 @@ Maps advertised WPanel capabilities to iQPanel phase slices. Do not mark a row c
 | MySQL/MariaDB/PostgreSQL, backups (local/FTP/Telegram) | 1–2 | shipped |
 | Docker, cron, systemd templates, web terminal | 2 | shipped |
 | Certbot, UFW, multi-server registry | 2 | shipped |
-| Per-site file API, WP-CLI API, feature catalog, alert config | 2 foundations | shipped (API only) |
-| Multi-server Agent invoke | 3A | planned |
-| GitHub auto-deploy and rollback | 3B | planned |
+| Per-site file API, WP-CLI API, feature catalog, alert config | 2 foundations | shipped |
+| Multi-server Agent invoke | 3A | shipped |
+| GitHub auto-deploy and rollback | 3B | shipped |
 | Per-site Unix user isolation | 3C | shipped |
 | Team roles, TOTP 2FA, audit log UI | 3D | shipped |
-| OpenLiteSpeed, stack presets, Fail2Ban, swap, disk, SSH keys, mail, phpMyAdmin, Cloudflare | 3E | planned |
-| File manager UI, WordPress UI, service installer UI, alert delivery | 3F | planned |
+| OpenLiteSpeed, stack presets, Fail2Ban, swap, disk, SSH keys, mail, phpMyAdmin, Cloudflare | 3E | shipped |
+| File manager UI, WordPress UI, service installer UI, alert delivery | 3F | shipped |

@@ -115,29 +115,29 @@ Can run in parallel with 3A–3C. Required before public exposure.
 
 Independent slices; each needs Agent action, installer hook, `verify.sh` check, and `FEATURE_CATALOG` update.
 
-- [ ] OpenLiteSpeed vhost templates and per-site webserver option
-- [ ] LNMP / LAMP / LLMP stack presets (`installer --stack`)
-- [ ] Fail2Ban jail templates and status API
-- [ ] Swap enable/disable with size limits
-- [ ] Disk extension (allowlisted LVM/partition grow, dry-run first)
-- [ ] SSH `authorized_keys` management (admin keys)
-- [ ] Mail server (Postfix + Dovecot minimal, optional)
-- [ ] phpMyAdmin vhost install
-- [ ] Cloudflare DNS A/AAAA/CNAME upsert via API token
+- [x] OpenLiteSpeed vhost templates and per-site webserver option
+- [x] LNMP / LAMP / LLMP stack presets (`installer --stack`)
+- [x] Fail2Ban jail templates and status API
+- [x] Swap enable/disable with size limits
+- [x] Disk extension (allowlisted LVM/partition grow, dry-run first)
+- [x] SSH `authorized_keys` management (admin keys)
+- [x] Mail server (Postfix + Dovecot minimal, optional)
+- [x] phpMyAdmin vhost install
+- [x] Cloudflare DNS A/AAAA/CNAME upsert via API token
 
 ## Phase 3F — Dashboard parity UI and alert delivery
 
 Depends on: 3B (deploy UI), 3C (ownership-aware file ops), 3D (auth for sensitive UI), 3E (settings for integrations).
 
-- [ ] File manager UI (list, edit, upload, download, rename, delete)
-- [ ] WordPress one-click install, staging clone, backup/restore UI
-- [ ] WordPress plugin/theme list and activate/deactivate UI
+- [x] File manager UI (list, edit, upload, download, rename, delete)
+- [x] WordPress one-click install, staging clone, backup/restore UI
+- [x] WordPress plugin/theme list and activate/deactivate UI
 - [x] Service installer UI with package allowlists and queued install jobs
 - [x] Alert delivery worker (metric poll → `alert_events` → Telegram/Discord)
 - [x] Alert deduplication cooldown per channel
-- [ ] Tests: upload traversal, WP install rollback, alert dedup
+- [x] Tests: upload traversal, WP install rollback, alert dedup
 
-## Feature foundations shipped (API only — complete in 3F)
+## Phase 3 feature foundations and workflows shipped
 
 - [x] Path-constrained per-site file API (`/api/sites/:slug/files`)
 - [x] Allowlisted WordPress WP-CLI API (`/api/sites/:slug/wordpress`)

@@ -378,13 +378,15 @@
     if (!slug) return;
     state.filesPath = relative;
     const result = await api(`/api/sites/${encodeURIComponent(slug)}/files?path=${encodeURIComponent(relative)}`);
-    $("#files-list").innerHTML = (result.entries || []).map((entry) => `<div class="data-row"><button type="button" class="text-button" data-file-name="${escapeHtml(entry.name)}" data-file-type="${escapeHtml(entry.type)}">${entry.type === "directory" ? "□" : "▤"} ${escapeHtml(entry.name)}</button><small>${escapeHtml(String(entry.size))} bytes</small></div>`).join("") || emptyRow("Directory is empty.");
+    $("#files-list").innerHTML = (result.entries || []).map((entry) => `<div class="data-row"><button type="button" class="text-button" data-file-name="${escapeHtml(entry.name)}" data-file-type="${escapeHtml(entry.type)}">${entry.type === "directory" ? "□" : "▤"} ${escapeHtml(entry.name)}</button><small>${escapeHtml(String(entry.size))} bytes</small><div class="row-actions"><button type="button" class="secondary-button" data-file-action="rename" data-file-name="${escapeHtml(entry.name)}">Rename</button>${entry.type === "file" ? `<button type="button" class="secondary-button" data-file-action="download" data-file-name="${escapeHtml(entry.name)}">Download</button>` : ""}<button type="button" class="secondary-button" data-file-action="delete" data-file-name="${escapeHtml(entry.name)}">Delete</button></div></div>`).join("") || emptyRow("Directory is empty.");
   };
+
+  const filePathFor = (name) => state.filesPath === "." ? name : `${state.filesPath.replace(/\/$/, "")}/${name}`;
 
   const selectFile = async (name, type) => {
     const slug = $("#files-site-select")?.value;
     if (!slug) return;
-    const filePath = state.filesPath === "." ? name : `${state.filesPath.replace(/\/$/, "")}/${name}`;
+    const filePath = filePathFor(name);
     if (type === "directory") {
       $("#files-path").value = filePath;
       await loadFiles();
@@ -403,6 +405,18 @@
     if (!select) return;
     const result = await api("/api/system/packages");
     select.innerHTML = '<option value="">Install package…</option>' + (result.packages || []).map((item) => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join("");
+  };
+
+  const loadAlertSettings = async () => {
+    const form = $("#alerts-form");
+    if (!form) return;
+    const [alerts, settings] = await Promise.all([api("/api/alerts"), api("/api/settings")]);
+    form.elements.cpu.value = alerts.thresholds?.cpu || 90;
+    form.elements.memory.value = alerts.thresholds?.memory || 90;
+    form.elements.disk.value = alerts.thresholds?.disk || 90;
+    form.elements.cooldown_minutes.value = alerts.cooldown_minutes || 60;
+    form.elements.telegram_chat_id.value = settings.telegram_chat_id || "";
+    $("#alerts-status").textContent = `${alerts.discord_configured ? "Discord" : "No Discord"} · ${alerts.telegram_configured ? "Telegram" : "No Telegram"}`;
   };
 
   const runSiteAction = async (action, slug) => {
@@ -540,6 +554,7 @@
     if (view === "cron") await loadCron();
     if (view === "files") await loadFiles();
     if (view === "services") loadPackageOptions().catch(() => {});
+    if (view === "settings") loadAlertSettings().catch(() => {});
     if (view === "settings") renderSettings();
     if (view !== "logs") stopLogsStream();
   };
@@ -687,6 +702,28 @@
     $("#files-path")?.addEventListener("change", loadFiles);
     $("#files-refresh")?.addEventListener("click", loadFiles);
     $("#files-list")?.addEventListener("click", async (event) => {
+      const action = event.target.closest("[data-file-action]");
+      if (action) {
+        const slug = $("#files-site-select")?.value;
+        const filePath = filePathFor(action.dataset.fileName);
+        if (action.dataset.fileAction === "download") {
+          window.open(`/api/sites/${encodeURIComponent(slug)}/files/download?path=${encodeURIComponent(filePath)}`, "_blank", "noopener");
+          return;
+        }
+        if (action.dataset.fileAction === "delete") {
+          if (!window.confirm(`Delete ${filePath}?`)) return;
+          await api(`/api/sites/${encodeURIComponent(slug)}/files`, { method: "PUT", body: JSON.stringify({ action: "delete", path: filePath }) });
+          showToast("File deleted");
+          await loadFiles();
+          return;
+        }
+        const nextName = window.prompt("New file or directory name", action.dataset.fileName);
+        if (!nextName || /[\\/]/.test(nextName)) return;
+        await api(`/api/sites/${encodeURIComponent(slug)}/files`, { method: "PUT", body: JSON.stringify({ action: "rename", path: filePath, target: filePathFor(nextName) }) });
+        showToast("Renamed");
+        await loadFiles();
+        return;
+      }
       const item = event.target.closest("[data-file-name]");
       if (item) await selectFile(item.dataset.fileName, item.dataset.fileType);
     });
@@ -709,14 +746,46 @@
       const button = event.target.closest("[data-wp-action]");
       const slug = $("#files-site-select")?.value;
       if (!button || !slug) return;
-      const result = await api(`/api/sites/${encodeURIComponent(slug)}/wordpress/${button.dataset.wpAction}`);
-      $("#wordpress-output").textContent = result.stdout || result.error || "No output";
+      const action = button.dataset.wpAction;
+      let result;
+      if (action === "install") {
+        const input = {
+          url: window.prompt("WordPress URL", "https://example.com"),
+          title: window.prompt("Site title", "WordPress site"),
+          admin_user: window.prompt("Admin username", "admin"),
+          admin_password: window.prompt("Admin password"),
+          admin_email: window.prompt("Admin email"),
+          db_name: window.prompt("Database name"),
+          db_user: window.prompt("Database user"),
+          db_password: window.prompt("Database password"),
+        };
+        result = await api(`/api/sites/${encodeURIComponent(slug)}/wordpress/install`, { method: "POST", body: JSON.stringify(input) });
+      } else if (action === "staging") {
+        result = await api(`/api/sites/${encodeURIComponent(slug)}/wordpress/staging`, { method: "POST", body: JSON.stringify({ target_slug: window.prompt("Staging site slug", `${slug}-staging`) }) });
+      } else if (action === "backup") {
+        result = await api(`/api/sites/${encodeURIComponent(slug)}/wordpress/backup`, { method: "POST", body: "{}" });
+      } else if (action === "restore") {
+        result = await api(`/api/sites/${encodeURIComponent(slug)}/wordpress/restore`, { method: "POST", body: JSON.stringify({ path: window.prompt("Backup path") }) });
+      } else if (["plugin_activate", "plugin_deactivate", "theme_activate", "theme_deactivate"].includes(action)) {
+        result = await api(`/api/sites/${encodeURIComponent(slug)}/wordpress/${action}`, { method: "POST", body: JSON.stringify({ args: [window.prompt("Slug")] }) });
+      } else {
+        result = await api(`/api/sites/${encodeURIComponent(slug)}/wordpress/${action}`);
+      }
+      $("#wordpress-output").textContent = result.stdout || result.path || result.error || "No output";
     });
     $("#install-package-button")?.addEventListener("click", async () => {
       const packageName = $("#service-package-select")?.value;
       if (!packageName) return;
       await api("/api/system/packages/install", { method: "POST", body: JSON.stringify({ package: packageName }) });
       showToast("Package installation queued");
+    });
+    $("#alerts-form")?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const values = Object.fromEntries(new FormData(event.currentTarget).entries());
+      await api("/api/alerts", { method: "PUT", body: JSON.stringify({ cpu: Number(values.cpu), memory: Number(values.memory), disk: Number(values.disk), cooldown_minutes: Number(values.cooldown_minutes), discord_webhook: values.discord_webhook || undefined }) });
+      await api("/api/settings", { method: "PUT", body: JSON.stringify({ telegram_bot_token: values.telegram_bot_token || undefined, telegram_chat_id: values.telegram_chat_id || undefined }) });
+      showToast("Alert settings saved");
+      await loadAlertSettings();
     });
 
     document.addEventListener("keydown", (event) => {

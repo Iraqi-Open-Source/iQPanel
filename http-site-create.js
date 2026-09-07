@@ -7,7 +7,9 @@ async function applySiteConfig(site) {
   const agent = siteAgent(site);
   const web = site.webserver === 'apache'
     ? await agent.invoke('applyApacheConfig', site)
-    : await agent.invoke('applyNginxConfig', site);
+    : site.webserver === 'openlitespeed'
+      ? await agent.invoke('applyOpenLiteSpeedConfig', site)
+      : await agent.invoke('applyNginxConfig', site);
   let php = null;
   if (site.type === 'php') php = await agent.invoke('applyPhpPool', site);
   const status = web.applied || php?.applied ? 'applied' : 'generated';
@@ -20,7 +22,8 @@ async function handleSiteCreate(request, response, pathname) {
   const input = await body(request);
   const repo = String(input.repo || '').trim();
   if (!/^git@[\w.-]+:[\w./-]+(?:\.git)?$/.test(repo)) throw new Error('A valid GitHub SSH URL is required');
-  const webserver = String(input.server || input.webserver || 'nginx').toLowerCase() === 'apache' ? 'apache' : 'nginx';
+  const requestedWebserver = String(input.server || input.webserver || 'nginx').toLowerCase();
+  const webserver = ['nginx', 'apache', 'openlitespeed'].includes(requestedWebserver) ? requestedWebserver : 'nginx';
   const name = String(input.name || repo.split('/').pop().replace(/\.git$/, '')).trim();
   const slug = slugify(name);
   if (getSite(slug)) throw new Error('A site with this name already exists');

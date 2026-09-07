@@ -58,6 +58,7 @@ function mutateSiteFile(slug, action, relative, target) {
 }
 
 async function wordpress(slug, action, args = []) {
+  const app = sitePath(slug) + '/app';
   const allowed = {
     version: ['core', 'version'],
     plugins: ['plugin', 'list', '--format=json'],
@@ -66,13 +67,82 @@ async function wordpress(slug, action, args = []) {
     plugin_update: ['plugin', 'update', '--all'],
     theme_update: ['theme', 'update', '--all'],
   };
+  if (['plugin_activate', 'plugin_deactivate'].includes(action)) {
+    const plugin = String(args[0] || '');
+    if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(plugin)) throw new Error('Invalid plugin slug');
+    return command('wp', ['plugin', action === 'plugin_activate' ? 'activate' : 'deactivate', plugin], { cwd: app, env: { ...process.env, WP_CLI_ALLOW_ROOT: '1' } });
+  }
+  if (['theme_activate', 'theme_deactivate'].includes(action)) {
+    const theme = String(args[0] || '');
+    if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(theme)) throw new Error('Invalid theme slug');
+    return command('wp', ['theme', action === 'theme_activate' ? 'activate' : 'deactivate', theme], { cwd: app, env: { ...process.env, WP_CLI_ALLOW_ROOT: '1' } });
+  }
   if (!Object.hasOwn(allowed, action)) throw new Error('Unsupported WordPress action');
-  const app = sitePath(slug) + '/app';
   return command('wp', [...allowed[action], ...args.map(String)], { cwd: app, env: { ...process.env, WP_CLI_ALLOW_ROOT: '1' } });
 }
 
+function wordpressBackup(slug) {
+  assertSlug(slug);
+  const directory = path.join(root, 'backups', slug, 'wordpress');
+  fs.mkdirSync(directory, { recursive: true });
+  const filePath = path.join(directory, `${new Date().toISOString().replaceAll(':', '-')}.tar.gz`);
+  return command('tar', ['--exclude=node_modules', '-czf', filePath, '-C', sitePath(slug), 'app']).then(() => ({ path: filePath, size: fs.statSync(filePath).size }));
+}
+
+function wordpressInstall(slug, options = {}) {
+  assertSlug(slug);
+  const app = path.join(sitePath(slug), 'app');
+  const url = String(options.url || '').trim();
+  const title = String(options.title || '').trim();
+  const adminUser = String(options.admin_user || '').trim();
+  const adminPassword = String(options.admin_password || '');
+  const adminEmail = String(options.admin_email || '').trim();
+  const dbName = String(options.db_name || '').trim();
+  const dbUser = String(options.db_user || '').trim();
+  const dbPassword = String(options.db_password || '');
+  if (!/^https?:\/\/[^\s]+$/.test(url) || !title || !/^[a-zA-Z0-9_-]{1,32}$/.test(adminUser) || !adminPassword || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(adminEmail)) throw new Error('Invalid WordPress installation settings');
+  if (![dbName, dbUser].every((value) => /^[A-Za-z0-9_]{1,64}$/.test(value)) || !dbPassword) throw new Error('Invalid WordPress database settings');
+  const args = ['core', 'install', `--url=${url}`, `--title=${title}`, `--admin_user=${adminUser}`, `--admin_password=${adminPassword}`, `--admin_email=${adminEmail}`, `--dbname=${dbName}`, `--dbuser=${dbUser}`, `--dbpass=${dbPassword}`, '--skip-email'];
+  return command('wp', args, { cwd: app, env: { ...process.env, WP_CLI_ALLOW_ROOT: '1' } });
+}
+
+function wordpressRestore(slug, backupPath) {
+  assertSlug(slug);
+  const backupRoot = path.join(root, 'backups', slug, 'wordpress');
+  const resolved = path.resolve(String(backupPath || ''));
+  if (!resolved.startsWith(`${backupRoot}${path.sep}`) || !resolved.endsWith('.tar.gz')) throw new Error('Backup path is outside the WordPress backup directory');
+  if (!fs.existsSync(resolved)) throw new Error('WordPress backup not found');
+  const app = path.join(sitePath(slug), 'app');
+  const temporary = path.join(sitePath(slug), `.restore-${Date.now()}`);
+  fs.mkdirSync(temporary, { recursive: true, mode: 0o750 });
+  return command('tar', ['-xzf', resolved, '-C', temporary]).then(() => {
+    const restored = path.join(temporary, 'app');
+    if (!fs.existsSync(restored)) throw new Error('Backup archive does not contain an app directory');
+    fs.rmSync(app, { recursive: true, force: true });
+    fs.renameSync(restored, app);
+    fs.rmSync(temporary, { recursive: true, force: true });
+    return { restored: true, path: resolved };
+  }).catch((error) => {
+    fs.rmSync(temporary, { recursive: true, force: true });
+    throw error;
+  });
+}
+
+function wordpressStaging(slug, targetSlug) {
+  assertSlug(slug);
+  assertSlug(targetSlug);
+  if (slug === targetSlug) throw new Error('Staging site must have a different slug');
+  const source = path.join(sitePath(slug), 'app');
+  const target = path.join(sitePath(targetSlug), 'app');
+  if (fs.existsSync(target)) throw new Error('Staging site already exists');
+  fs.mkdirSync(path.dirname(target), { recursive: true, mode: 0o750 });
+  fs.cpSync(source, target, { recursive: true, filter: (entry) => !entry.includes(`${path.sep}node_modules${path.sep}`) });
+  applySiteOwnership(targetSlug, path.dirname(target));
+  return { source: slug, staging: targetSlug, path: target };
+}
+
 async function systemCapabilities() {
-  const commands = ['nginx', 'apache2', 'certbot', 'docker', 'ufw', 'fail2ban-client', 'wp', 'swapon', 'lsblk'];
+  const commands = ['nginx', 'apache2', 'lsws', 'certbot', 'docker', 'ufw', 'fail2ban-client', 'postfix', 'dovecot', 'php', 'wp', 'swapon', 'lsblk', 'lvextend', 'growpart'];
   const available = {};
   for (const program of commands) {
     try { await command('sh', ['-c', `command -v ${program}`]); available[program] = true; } catch { available[program] = false; }
@@ -324,6 +394,10 @@ module.exports = {
   writeSiteFile,
   mutateSiteFile,
   wordpress,
+  wordpressBackup,
+  wordpressRestore,
+  wordpressStaging,
+  wordpressInstall,
   systemCapabilities,
   installPackage,
   command,

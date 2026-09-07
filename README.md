@@ -38,7 +38,7 @@ Then open `http://127.0.0.1:4173` and sign in with the one-time password printed
 
 ## Features
 
-- Sites CRUD with Nginx or Apache vhosts, per-site Unix users (`iqpanel-<slug>`), deploy keys, and Git clone/pull jobs
+- Sites CRUD with Nginx, Apache, or OpenLiteSpeed vhosts, per-site Unix users (`iqpanel-<slug>`), deploy keys, and Git clone/pull jobs
 - PHP, Node, Python, static, and Docker Compose site types
 - Selectable PHP/Node runtime versions (`PANEL_PHP_VERSIONS`, `PANEL_NODE_VERSIONS`)
 - MySQL, MariaDB, and PostgreSQL create/attach with honest provisioning status
@@ -50,7 +50,7 @@ Then open `http://127.0.0.1:4173` and sign in with the one-time password printed
 - Multi-server registry (local agent plus remote host/token records)
 - Optional team login with owner/admin/operator/readonly roles, TOTP 2FA, re-auth for privileged actions, and an audit log (`PANEL_ADMIN_PASSWORD_HASH` migrates to the first owner)
 - Secure per-site file manager API for listing, reading, writing, creating, renaming, and deleting files under the site app root
-- WordPress detection and allowlisted WP-CLI operations when `wp` is installed
+- WordPress install, staging, backup/restore, detection, and allowlisted WP-CLI operations when `wp` is installed
 - Feature and host capability inventory at `/api/system/features` and `/api/system/capabilities`
 - Configurable CPU, memory, and disk alert thresholds, with encrypted Discord webhook storage
 - Browser file manager/editor/upload workflow and an allowlisted package installer with queued jobs
@@ -58,12 +58,8 @@ Then open `http://127.0.0.1:4173` and sign in with the one-time password printed
 
 ## Feature status
 
-iQPanel is not a drop-in clone of WPanel. The current release ships the secure foundations above and keeps privileged work behind the root Agent. The following advertised WPanel features are planned and are intentionally not advertised as working yet:
+iQPanel is not a drop-in clone of WPanel. Privileged work remains behind the root Agent. Phase 3E host integrations and Phase 3F dashboard workflows are implemented with generated-only local mode, allowlists, and audit logging.
 
-- OpenLiteSpeed and LNMP/LAMP/LLMP stack presets
-- Cloudflare DNS, mail server, phpMyAdmin, Fail2Ban, swap, disk extension, and SSH key management
-- WordPress one-click install, staging, backup/restore, and plugin/theme administration UI
-- Browser UI for the file manager, alert delivery, and complete service installer
-- TOTP 2FA, team roles, and full audit-log UI
+The runtime feature catalog at `/api/system/features` is authoritative for optional integrations and reports unavailable host tools without pretending they are installed.
 
 Use `GET /api/system/features` to inspect feature availability at runtime. Planned OS integrations will be added only with explicit allowlists and installer verification; the panel will never expose arbitrary shell execution.

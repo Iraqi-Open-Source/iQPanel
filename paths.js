@@ -20,6 +20,10 @@ function systemdRoot() {
   return process.env.PANEL_SYSTEMD_ROOT || '/etc/systemd/system';
 }
 
+function openLiteSpeedRoot() {
+  return process.env.PANEL_OPENLITESPEED_ROOT || '/usr/local/lsws';
+}
+
 function generatedRoot() {
   return path.join(root, 'generated');
 }
@@ -70,6 +74,7 @@ module.exports = {
   nginxRoot,
   phpFpmRoot,
   systemdRoot,
+  openLiteSpeedRoot,
   generatedRoot,
   nginxGenerated,
   nginxAvailable,

@@ -17,9 +17,28 @@ case "${VERSION_ID:-}" in
 esac
 
 export DEBIAN_FRONTEND=noninteractive
+
+STACK="${PANEL_STACK:-all}"
+if [[ "${1:-}" == --stack=* ]]; then
+  STACK="${1#--stack=}"
+elif [[ "${1:-}" == "--stack" ]]; then
+  STACK="${2:-all}"
+fi
+case "${STACK}" in
+  all) WEB_PACKAGES=(nginx apache2); DB_PACKAGES=(mysql-server postgresql postgresql-contrib) ;;
+  lnmp) WEB_PACKAGES=(nginx); DB_PACKAGES=(mysql-server) ;;
+  lamp) WEB_PACKAGES=(apache2); DB_PACKAGES=(mysql-server) ;;
+  llmp) WEB_PACKAGES=(nginx); DB_PACKAGES=(mariadb-server) ;;
+  *) echo "Supported stacks: all, lnmp, lamp, llmp" >&2; exit 1 ;;
+esac
+
 apt-get update
 apt-get install -y curl git unzip tar ca-certificates sqlite3 openssh-client software-properties-common \
-  nginx apache2 certbot python3 python3-venv python3-pip ufw composer mysql-server postgresql postgresql-contrib docker.io docker-compose-v2
+  certbot python3 python3-venv python3-pip ufw composer docker.io docker-compose-v2 "${WEB_PACKAGES[@]}" "${DB_PACKAGES[@]}"
+
+if [[ "${PANEL_INSTALL_OPTIONAL:-0}" == "1" ]]; then
+  apt-get install -y fail2ban postfix dovecot-core phpmyadmin
+fi
 
 add-apt-repository -y ppa:ondrej/php
 apt-get update
@@ -74,6 +93,7 @@ PANEL_APPLY_SYSTEM=1
 PANEL_PHP_VERSION=8.3
 PANEL_PHP_VERSIONS=8.2,8.3
 PANEL_NODE_VERSIONS=20
+PANEL_STACK=${STACK}
 EOF
 chmod 0640 /etc/panel-agent/env
 chown root:panel /etc/panel-agent/env

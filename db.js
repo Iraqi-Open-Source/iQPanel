@@ -16,11 +16,11 @@ function sql(value) {
 
 function run(statement, { foreignKeys = true } = {}) {
   const pragma = foreignKeys ? 'PRAGMA foreign_keys=ON;' : 'PRAGMA foreign_keys=OFF;';
-  execFileSync('sqlite3', ['-batch', '-cmd', pragma, dbPath, statement], { encoding: 'utf8' });
+  execFileSync('sqlite3', ['-batch', '-cmd', '.timeout 5000', '-cmd', pragma, dbPath, statement], { encoding: 'utf8' });
 }
 
 function rows(statement) {
-  const output = execFileSync('sqlite3', ['-json', '-cmd', 'PRAGMA foreign_keys=ON;', dbPath, statement], { encoding: 'utf8' }).trim();
+  const output = execFileSync('sqlite3', ['-json', '-cmd', '.timeout 5000', '-cmd', 'PRAGMA foreign_keys=ON;', dbPath, statement], { encoding: 'utf8' }).trim();
   return output ? JSON.parse(output) : [];
 }
 

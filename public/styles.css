@@ -32,3 +32,19 @@
 .empty-inline{color:var(--dim);padding:8px 0;margin:0}
 .logs-site-label select{border:0;background:transparent;width:100%;padding:10px 0;color:var(--text)}
 .cron-enabled-row{display:flex;align-items:center;gap:8px;margin:12px 0}
+
+/* Shared form controls also cover fields injected by phase2/phase3 scripts. */
+.modal label,.remote-server-form label{display:block;color:var(--muted);font-size:10px;margin-bottom:14px}
+.modal input:not([type="checkbox"]):not([type="radio"]),.modal select,.modal textarea,.remote-server-form input:not([type="checkbox"]),.remote-server-form select,.remote-server-form textarea{display:block;width:100%;margin-top:7px;border:1px solid var(--line);border-radius:7px;background:var(--surface-2);color:var(--text);padding:10px 11px;outline:none;transition:border-color .18s,box-shadow .18s}
+.modal textarea,.remote-server-form textarea{min-height:110px;resize:vertical;line-height:1.5}
+.modal input:focus,.modal select:focus,.modal textarea:focus,.remote-server-form input:focus,.remote-server-form select:focus,.remote-server-form textarea:focus{border-color:var(--cyan);box-shadow:0 0 0 3px rgba(133,215,203,.1)}
+.modal input::placeholder,.remote-server-form input::placeholder,.search-box input::placeholder{color:var(--dim)}
+.form-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.search-box input{min-width:0;border:0;background:transparent;color:var(--text);outline:none;padding:0;width:100%}
+.server-select{width:100%;border:0;background:transparent;color:var(--text);font-size:11px;outline:none;padding:0}
+#terminal-form{display:flex;gap:10px;margin-top:12px}
+#terminal-input{flex:1;min-width:0;border:1px solid var(--line);border-radius:7px;background:var(--surface-2);color:var(--text);padding:10px 11px;outline:none}
+#terminal-input:focus{border-color:var(--cyan);box-shadow:0 0 0 3px rgba(133,215,203,.1)}
+select{color-scheme:dark}
+input[type="checkbox"],input[type="radio"]{accent-color:var(--cyan)}
+@media (max-width:600px){.form-row{grid-template-columns:1fr}.modal{width:calc(100vw - 28px);padding:22px 18px}#terminal-form{align-items:stretch;flex-direction:column}}

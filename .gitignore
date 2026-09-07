@@ -2,3 +2,6 @@ data/
 node_modules/
 *.sqlite
 .worktrees/
+.cursor/
+.opencode/
+.claude/

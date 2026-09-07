@@ -1,6 +1,7 @@
 const http = require('node:http');
 const worker = require('./worker');
 const { handleRequest } = require('./http-routes');
+const alerts = require('./alerts');
 
 const port = Number(process.env.PORT || 4173);
 const bind = process.env.PANEL_BIND || '127.0.0.1';
@@ -18,6 +19,7 @@ if (require.main === module) {
   const serverProbe = require('./server-probe');
   worker.start();
   serverProbe.start();
+  alerts.start();
   server.on('error', (error) => {
     if (error.code === 'EADDRINUSE') {
       console.error(`Port ${port} is already in use on ${bind}.`);

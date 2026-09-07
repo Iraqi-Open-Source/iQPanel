@@ -48,8 +48,9 @@
           <button class="nav-item" type="button" data-view="databases"><span class="nav-icon">◉</span>Databases</button>
           <button class="nav-item" type="button" data-view="backups"><span class="nav-icon">↻</span>Backups</button>
           <button class="nav-item" type="button" data-view="services"><span class="nav-icon">▣</span>Services</button>
-          <button class="nav-item" type="button" data-view="logs"><span class="nav-icon">≡</span>Logs</button>
-          <button class="nav-item" type="button" data-view="cron"><span class="nav-icon">◷</span>Cron</button>
+           <button class="nav-item" type="button" data-view="logs"><span class="nav-icon">≡</span>Logs</button>
+           <button class="nav-item" type="button" data-view="cron"><span class="nav-icon">◷</span>Cron</button>
+           <button class="nav-item" type="button" data-view="files"><span class="nav-icon">□</span>Files</button>
           <div class="nav-label">System</div>
           <button class="nav-item" type="button" data-view="terminal"><span class="nav-icon">&gt;_</span>Terminal</button>
           <button class="nav-item" type="button" data-view="audit"><span class="nav-icon">◉</span>Audit</button>
@@ -123,7 +124,7 @@
                 <h1>Services<span class="heading-period">.</span></h1>
                 <p class="subheading">Systemd units managed per site.</p>
               </div>
-              <button class="primary-button" type="button" id="create-service-button" disabled><span>+</span> Create service</button>
+               <div class="row-actions"><select id="service-package-select"><option value="">Install package…</option></select><button class="secondary-button" type="button" id="install-package-button">Install</button><button class="primary-button" type="button" id="create-service-button" disabled><span>+</span> Create service</button></div>
             </div>
             <div class="toolbar">
               <label class="search-box logs-site-label">Site
@@ -131,7 +132,14 @@
               </label>
             </div>
             <div class="panel"><div class="data-list" id="services-list"></div></div>
-          </section>
+           </section>
+
+           <section class="view" id="files-view">
+             <div class="page-heading"><div><p class="eyebrow">WORKSPACE / FILES</p><h1>Site files<span class="heading-period">.</span></h1><p class="subheading">Edit files inside a site app root through the Agent.</p></div></div>
+             <div class="toolbar"><label class="search-box logs-site-label">Site<select id="files-site-select"></select></label><label class="search-box logs-site-label">Directory<input id="files-path" value="." placeholder="storage" /></label><button class="secondary-button" type="button" id="files-refresh">Refresh</button><label class="secondary-button">Upload<input id="files-upload" type="file" hidden /></label></div>
+             <div class="content-grid"><section class="panel"><div class="data-list" id="files-list"></div></section><section class="panel"><div class="panel-heading"><div><h2 id="file-editor-title">Select a file</h2><p>Changes are written through the root Agent.</p></div><button class="primary-button" type="button" id="file-save" disabled>Save</button></div><textarea id="file-editor" rows="20" spellcheck="false" disabled></textarea></section></div>
+             <div class="panel" style="margin-top: 1rem"><div class="panel-heading"><div><h2>WordPress</h2><p>Allowlisted WP-CLI operations for this site.</p></div><div class="row-actions"><button class="secondary-button" type="button" data-wp-action="plugins">Plugins</button><button class="secondary-button" type="button" data-wp-action="themes">Themes</button><button class="secondary-button" type="button" data-wp-action="version">Check version</button></div></div><pre id="wordpress-output" class="logs-output"></pre></div>
+           </section>
 
           <section class="view" id="logs-view">
             <div class="page-heading">

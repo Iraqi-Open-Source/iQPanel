@@ -12,6 +12,7 @@ function publicSettings() {
     ftp_user: setting('ftp_user'),
     telegram_chat_id: setting('telegram_chat_id'),
     active_server_id: setting('active_server_id') || 'local',
+    alert_cooldown_minutes: Number(setting('alert_cooldown_minutes') || 60),
   };
 }
 
@@ -45,6 +46,7 @@ async function handleSettings(request, response, pathname) {
     if (input.ftp_remote_dir !== undefined) writes.push(['ftp_remote_dir', String(input.ftp_remote_dir)]);
     if (input.telegram_chat_id !== undefined) writes.push(['telegram_chat_id', String(input.telegram_chat_id)]);
     if (input.active_server_id !== undefined) writes.push(['active_server_id', String(input.active_server_id)]);
+    if (input.alert_cooldown_minutes !== undefined && Number(input.alert_cooldown_minutes) >= 1) writes.push(['alert_cooldown_minutes', String(Math.min(10080, Number(input.alert_cooldown_minutes)))]);
     if (input.ftp_password) writes.push(['ftp_password', secrets.encrypt(String(input.ftp_password))]);
     if (input.telegram_bot_token) writes.push(['telegram_bot_token', secrets.encrypt(String(input.telegram_bot_token))]);
     for (const [key, value] of writes) {

@@ -80,6 +80,20 @@ async function systemCapabilities() {
   return { available, generated_config_root: root };
 }
 
+const INSTALLABLE_PACKAGES = new Set([
+  'nginx', 'apache2', 'certbot', 'php', 'php-fpm', 'mysql-server', 'mariadb-server',
+  'postgresql', 'docker-ce', 'docker-compose-plugin', 'fail2ban', 'postfix', 'dovecot-core',
+  'phpmyadmin', 'python3-venv', 'python3-pip', 'nodejs', 'npm', 'unzip', ' ufw'.trim(),
+]);
+
+async function installPackage(packageName) {
+  const name = String(packageName || '').trim();
+  if (!INSTALLABLE_PACKAGES.has(name)) throw new Error('Package is not allowlisted');
+  if (!paths.applySystem) return { package: name, installed: false, applied: false, reason: 'PANEL_APPLY_SYSTEM is disabled' };
+  const result = await command('apt-get', ['install', '-y', '--no-install-recommends', name]);
+  return { package: name, installed: true, applied: true, output: `${result.stdout || ''}${result.stderr || ''}`.slice(-4000) };
+}
+
 function command(program, args, options = {}) {
   const { input, ...spawnOptions } = options;
   return new Promise((resolve, reject) => {
@@ -311,6 +325,7 @@ module.exports = {
   mutateSiteFile,
   wordpress,
   systemCapabilities,
+  installPackage,
   command,
   siteUserName,
   applySiteOwnership,

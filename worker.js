@@ -74,6 +74,11 @@ const handlers = {
     log('Site user migration completed', 'panel', `${migrated.length} sites`);
     return { migrated };
   },
+  async installPackage(payload) {
+    const result = await agentForPayload(payload).invoke('installPackage', payload.package);
+    log('Package installation completed', payload.package);
+    return result;
+  },
 };
 
 let busy = false;

@@ -53,6 +53,8 @@ Then open `http://127.0.0.1:4173` and sign in with the one-time password printed
 - WordPress detection and allowlisted WP-CLI operations when `wp` is installed
 - Feature and host capability inventory at `/api/system/features` and `/api/system/capabilities`
 - Configurable CPU, memory, and disk alert thresholds, with encrypted Discord webhook storage
+- Browser file manager/editor/upload workflow and an allowlisted package installer with queued jobs
+- Background CPU/memory/disk alert delivery to configured Discord and Telegram channels with cooldown deduplication
 
 ## Feature status
 

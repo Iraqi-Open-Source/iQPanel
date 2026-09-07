@@ -11,6 +11,8 @@
     logsStream: null,
     cronJobs: [],
     databases: [],
+    filesPath: ".",
+    selectedFile: "",
   };
 
   const $ = (sel, root = document) => root.querySelector(sel);
@@ -223,6 +225,7 @@
     if (state.currentView === "services") await loadServices();
     if (state.currentView === "logs") await loadLogsView();
     if (state.currentView === "cron") await loadCron();
+    if (state.currentView === "files") await loadFiles();
   };
 
   const loadDeployments = async () => {
@@ -263,6 +266,7 @@
     const cronSelect = $("#cron-site-select");
     const servicesSelect = $("#services-site-select");
     const logsSelect = $("#logs-site-select");
+    const filesSelect = $("#files-site-select");
     if (dbSelect) dbSelect.innerHTML = options;
     if (cronSelect) cronSelect.innerHTML = '<option value="">Server-wide</option>' + options;
     if (servicesSelect) {
@@ -274,6 +278,10 @@
     if (logsSelect) {
       logsSelect.innerHTML = options;
       if (state.sites[0]) logsSelect.value = state.sites[0].slug;
+    }
+    if (filesSelect) {
+      filesSelect.innerHTML = options;
+      if (state.sites[0]) filesSelect.value = filesSelect.value || state.sites[0].slug;
     }
   };
 
@@ -362,6 +370,39 @@
       return;
     }
     list.innerHTML = items.map((job) => `<div class="data-row"><span><strong>${escapeHtml(job.schedule)}</strong><small>${escapeHtml(job.command)} · ${escapeHtml(job.run_as_user)}</small></span><span class="badge ${job.enabled ? "badge-ok" : "badge-warn"}">${job.enabled ? "Enabled" : "Disabled"}</span><div class="row-actions"><button type="button" class="secondary-button" data-cron-toggle="${escapeHtml(job.id)}">${job.enabled ? "Disable" : "Enable"}</button><button type="button" class="secondary-button" data-cron-delete="${escapeHtml(job.id)}">Delete</button></div></div>`).join("");
+  };
+
+  const loadFiles = async () => {
+    const slug = $("#files-site-select")?.value;
+    const relative = $("#files-path")?.value || ".";
+    if (!slug) return;
+    state.filesPath = relative;
+    const result = await api(`/api/sites/${encodeURIComponent(slug)}/files?path=${encodeURIComponent(relative)}`);
+    $("#files-list").innerHTML = (result.entries || []).map((entry) => `<div class="data-row"><button type="button" class="text-button" data-file-name="${escapeHtml(entry.name)}" data-file-type="${escapeHtml(entry.type)}">${entry.type === "directory" ? "□" : "▤"} ${escapeHtml(entry.name)}</button><small>${escapeHtml(String(entry.size))} bytes</small></div>`).join("") || emptyRow("Directory is empty.");
+  };
+
+  const selectFile = async (name, type) => {
+    const slug = $("#files-site-select")?.value;
+    if (!slug) return;
+    const filePath = state.filesPath === "." ? name : `${state.filesPath.replace(/\/$/, "")}/${name}`;
+    if (type === "directory") {
+      $("#files-path").value = filePath;
+      await loadFiles();
+      return;
+    }
+    const result = await api(`/api/sites/${encodeURIComponent(slug)}/files/content?path=${encodeURIComponent(filePath)}`);
+    state.selectedFile = filePath;
+    $("#file-editor-title").textContent = filePath;
+    $("#file-editor").value = result.content || "";
+    $("#file-editor").disabled = false;
+    $("#file-save").disabled = false;
+  };
+
+  const loadPackageOptions = async () => {
+    const select = $("#service-package-select");
+    if (!select) return;
+    const result = await api("/api/system/packages");
+    select.innerHTML = '<option value="">Install package…</option>' + (result.packages || []).map((item) => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join("");
   };
 
   const runSiteAction = async (action, slug) => {
@@ -497,6 +538,8 @@
     if (view === "services") await loadServices();
     if (view === "logs") await loadLogsView();
     if (view === "cron") await loadCron();
+    if (view === "files") await loadFiles();
+    if (view === "services") loadPackageOptions().catch(() => {});
     if (view === "settings") renderSettings();
     if (view !== "logs") stopLogsStream();
   };
@@ -638,6 +681,42 @@
         showToast("Cron job deleted");
         await loadCron();
       }
+    });
+
+    $("#files-site-select")?.addEventListener("change", loadFiles);
+    $("#files-path")?.addEventListener("change", loadFiles);
+    $("#files-refresh")?.addEventListener("click", loadFiles);
+    $("#files-list")?.addEventListener("click", async (event) => {
+      const item = event.target.closest("[data-file-name]");
+      if (item) await selectFile(item.dataset.fileName, item.dataset.fileType);
+    });
+    $("#file-save")?.addEventListener("click", async () => {
+      const slug = $("#files-site-select").value;
+      await api(`/api/sites/${encodeURIComponent(slug)}/files`, { method: "POST", body: JSON.stringify({ path: state.selectedFile, content: $("#file-editor").value }) });
+      showToast("File saved");
+    });
+    $("#files-upload")?.addEventListener("change", async (event) => {
+      const file = event.target.files?.[0];
+      const slug = $("#files-site-select")?.value;
+      if (!file || !slug) return;
+      const path = state.filesPath === "." ? file.name : `${state.filesPath.replace(/\/$/, "")}/${file.name}`;
+      await api(`/api/sites/${encodeURIComponent(slug)}/files`, { method: "POST", body: JSON.stringify({ path, content: await file.text() }) });
+      event.target.value = "";
+      showToast("File uploaded");
+      await loadFiles();
+    });
+    $("#wordpress-output")?.parentElement.addEventListener("click", async (event) => {
+      const button = event.target.closest("[data-wp-action]");
+      const slug = $("#files-site-select")?.value;
+      if (!button || !slug) return;
+      const result = await api(`/api/sites/${encodeURIComponent(slug)}/wordpress/${button.dataset.wpAction}`);
+      $("#wordpress-output").textContent = result.stdout || result.error || "No output";
+    });
+    $("#install-package-button")?.addEventListener("click", async () => {
+      const packageName = $("#service-package-select")?.value;
+      if (!packageName) return;
+      await api("/api/system/packages/install", { method: "POST", body: JSON.stringify({ package: packageName }) });
+      showToast("Package installation queued");
     });
 
     document.addEventListener("keydown", (event) => {

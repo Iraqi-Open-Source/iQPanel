@@ -132,9 +132,9 @@ Depends on: 3B (deploy UI), 3C (ownership-aware file ops), 3D (auth for sensitiv
 - [ ] File manager UI (list, edit, upload, download, rename, delete)
 - [ ] WordPress one-click install, staging clone, backup/restore UI
 - [ ] WordPress plugin/theme list and activate/deactivate UI
-- [ ] Service installer UI with package allowlists and job progress
-- [ ] Alert delivery worker (metric poll → `alert_events` → Telegram/Discord)
-- [ ] Alert deduplication cooldown per channel
+- [x] Service installer UI with package allowlists and queued install jobs
+- [x] Alert delivery worker (metric poll → `alert_events` → Telegram/Discord)
+- [x] Alert deduplication cooldown per channel
 - [ ] Tests: upload traversal, WP install rollback, alert dedup
 
 ## Feature foundations shipped (API only — complete in 3F)
@@ -143,6 +143,8 @@ Depends on: 3B (deploy UI), 3C (ownership-aware file ops), 3D (auth for sensitiv
 - [x] Allowlisted WordPress WP-CLI API (`/api/sites/:slug/wordpress`)
 - [x] Runtime feature catalog and host capability inventory
 - [x] Alert threshold configuration with encrypted Discord webhook storage
+- [x] File manager UI and allowlisted service installer UI
+- [x] Alert delivery and cooldown worker
 
 Do not mark a Phase 3 slice complete until it has API, safe privileged implementation, frontend workflow (when applicable), installer coverage (when applicable), and tests.
 

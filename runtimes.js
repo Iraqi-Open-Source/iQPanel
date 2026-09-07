@@ -1,3 +1,5 @@
+const fs = require('node:fs');
+const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const paths = require('./paths');
 const runtimePaths = require('./runtime-paths');
@@ -32,9 +34,24 @@ function detectPythonMajor() {
   }
 }
 
+function discoverPhpVersions() {
+  const root = paths.phpFpmRoot();
+  if (!fs.existsSync(root)) return [];
+  try {
+    return fs.readdirSync(root)
+      .filter((entry) => /^\d+\.\d+$/.test(entry) && fs.existsSync(path.join(root, entry, 'fpm')))
+      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  } catch {
+    return [];
+  }
+}
+
 function phpMajors() {
+  const discovered = discoverPhpVersions();
   const configured = splitList(process.env.PANEL_PHP_VERSIONS);
-  return configured.length ? configured : [paths.phpVersion];
+  const merged = unique([...configured, ...discovered]);
+  if (merged.length) return merged;
+  return paths.phpVersion ? [paths.phpVersion] : [];
 }
 
 function nodeMajors() {
@@ -68,4 +85,4 @@ function list() {
   };
 }
 
-module.exports = { list, phpMajors, nodeMajors, pythonMajors };
+module.exports = { list, phpMajors, nodeMajors, pythonMajors, discoverPhpVersions };

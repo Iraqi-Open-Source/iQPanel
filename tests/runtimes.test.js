@@ -22,6 +22,8 @@ process.env.PANEL_PYENV_ROOT = pyenvRoot;
 process.env.PANEL_PHP_VERSIONS = '7.4,8.2,8.3,8.4';
 process.env.PANEL_NODE_VERSIONS = '20,22';
 process.env.PANEL_PYTHON_VERSIONS = '3.11,3.12';
+process.env.PANEL_PHP_FPM_ROOT = path.join(dataRoot, 'php');
+fs.mkdirSync(path.join(dataRoot, 'php', '8.5', 'fpm'), { recursive: true });
 
 const runtimePaths = require('../runtime-paths');
 const runtimes = require('../runtimes');
@@ -35,7 +37,8 @@ test('resolves installed nvm and pyenv versions by major', () => {
 
 test('runtime inventory merges configured and discovered versions', () => {
   const inventory = runtimes.list();
-  assert.deepEqual(inventory.php, ['7.4', '8.2', '8.3', '8.4']);
+  assert.deepEqual(inventory.php, ['7.4', '8.2', '8.3', '8.4', '8.5']);
+  assert.deepEqual(runtimes.discoverPhpVersions(), ['8.5']);
   assert.ok(inventory.node.includes('22'));
   assert.ok(inventory.python.includes('3.12'));
   assert.ok(inventory.paths.node_versions.includes('22.11.0'));

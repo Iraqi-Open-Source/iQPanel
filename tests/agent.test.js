@@ -81,3 +81,29 @@ test('crontab rendering preserves foreign entries', () => {
   assert.match(merged, /echo hi/);
   assert.match(merged, /# BEGIN iqpanel/);
 });
+
+test('PHP and systemd helpers reject unsafe input and stay generated-only', async () => {
+  await assert.rejects(() => agent.installPhpVersion('8.3; rm -rf /'), /Invalid PHP version/);
+  await assert.rejects(() => agent.installPhpVersion('8.3', ['curl', 'evil']), /Invalid PHP extension/);
+  const php = await agent.installPhpVersion('8.3');
+  assert.equal(php.applied, false);
+  assert.equal(php.version, '8.3');
+  assert.ok(php.extensions.includes('fpm'));
+
+  await assert.rejects(() => agent.controlSystemUnit('nginx;id.service', 'start'), /Invalid systemd unit name/);
+  await assert.rejects(() => agent.controlSystemUnit('nginx', 'start'), /Invalid systemd unit name/);
+  const control = await agent.controlSystemUnit('nginx.service', 'start');
+  assert.equal(control.applied, false);
+  assert.equal(control.unitName, 'nginx.service');
+
+  const listed = await agent.listSystemdUnits();
+  assert.ok(Array.isArray(listed.services));
+
+  const status = await agent.serviceStatus();
+  assert.equal(typeof status.nginx, 'string');
+  assert.ok(['active', 'inactive', 'failed', 'not_installed', 'unknown', 'deactivating', 'activating', 'reloading'].includes(status.nginx));
+
+  const pkg = await agent.installPackage('nginx');
+  assert.equal(pkg.applied, false);
+  await assert.rejects(() => agent.installPackage('bash -c id'), /not allowlisted/);
+});

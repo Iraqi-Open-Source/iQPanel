@@ -18,9 +18,27 @@ npm test
 
 Dashboard UI uses layered design tokens (`public/tokens.css`), shared components (`public/components.js`), and a light/dark theme toggle in the top bar.
 
-## Production layout
+## Production install
 
-The installer (`installer/install.sh`) targets Ubuntu 20.04, 22.04, and 24.04 (amd64 and arm64). It installs Nginx, Apache (disabled until a site selects it), PHP 7.4–8.4 via `ppa:ondrej/php`, Node via `nvm`, Python via `pyenv`, MySQL, PostgreSQL, Docker, Certbot, the root Agent, and the panel API bound to localhost.
+The installer (`installer/install.sh`) targets Ubuntu 20.04, 22.04, and 24.04 (amd64 and arm64). By default it is **minimal**: Node.js 20, the panel API, and the root Agent. It does not preinstall Nginx, PHP, MySQL, Docker, or other stack packages.
+
+After install, finish setup in the Dashboard:
+
+- Services view lists every systemd unit (start / stop / restart / enable / disable)
+- Install Nginx, Apache, MySQL, MariaDB, PostgreSQL, Redis, Docker, and other allowlisted packages
+- Install a custom PHP version (7.4–8.4 via `ppa:ondrej/php`) with FPM plus cli, mysql, pgsql, mbstring, xml, curl, gd, zip, bcmath, and intl
+
+```bash
+sudo bash installer/install.sh
+```
+
+To restore the old full-stack bootstrap (web server, databases, PHP, nvm, pyenv, Docker, Certbot, UFW):
+
+```bash
+PANEL_FULL=1 sudo bash installer/install.sh
+# or a stack preset:
+sudo bash installer/install.sh --stack=lnmp
+```
 
 ```text
 /opt/iqpanel              application
@@ -30,7 +48,7 @@ The installer (`installer/install.sh`) targets Ubuntu 20.04, 22.04, and 24.04 (a
 /etc/panel-agent/env      secret key, Agent token, admin password hash
 ```
 
-Set `PANEL_APPLY_SYSTEM=1` on the server so generated web/PHP-FPM/systemd/UFW/Certbot configs are installed under `/etc` and reloaded. Locally this stays off and files remain under `data/generated/`.
+`PANEL_APPLY_SYSTEM=1` is set by the installer so Dashboard-triggered `apt-get` and systemd actions run on the host. Local `npm start` keeps this off and writes files under `data/generated/`.
 
 Access the dashboard with an SSH tunnel:
 
@@ -38,7 +56,7 @@ Access the dashboard with an SSH tunnel:
 ssh -L 4173:127.0.0.1:4173 user@your-server
 ```
 
-Then open `http://127.0.0.1:4173` and sign in with the one-time password printed by the installer.
+Then open `http://127.0.0.1:4173` and sign in with the one-time password printed by the installer. From there you can install PHP versions and services without using the VPS terminal.
 
 ## Features
 
@@ -58,6 +76,8 @@ Then open `http://127.0.0.1:4173` and sign in with the one-time password printed
 - Feature and host capability inventory at `/api/system/features` and `/api/system/capabilities`
 - Configurable CPU, memory, and disk alert thresholds, with encrypted Discord webhook storage
 - Browser file manager/editor/upload workflow and an allowlisted package installer with queued jobs
+- Host systemd monitor (`/api/system/services`) with start/stop/restart/enable/disable from the Dashboard
+- On-demand PHP version installs from the Dashboard (`/api/system/php/install`)
 - Background CPU/memory/disk alert delivery to configured Discord and Telegram channels with cooldown deduplication
 
 ## Feature status

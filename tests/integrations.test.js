@@ -73,6 +73,8 @@ test('file uploads and WordPress restores remain confined and rollback on archiv
 
 test('service installer exposes only the package allowlist', () => {
   assert.equal(PACKAGE_ALLOWLIST.has('nginx'), true);
+  assert.equal(PACKAGE_ALLOWLIST.has('redis-server'), true);
+  assert.equal(PACKAGE_ALLOWLIST.has('docker.io'), true);
   assert.equal(PACKAGE_ALLOWLIST.has('bash -c id'), false);
 });
 

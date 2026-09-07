@@ -86,3 +86,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   .toolbar>.secondary-button,.toolbar>label.secondary-button{justify-content:center;flex:1}
   #file-editor{min-height:260px}
 }
+
+.row-actions>input{min-height:38px;border:1px solid var(--line);border-radius:7px;background:var(--surface-2);color:var(--text);padding:9px 11px;outline:none;min-width:90px}
+.row-actions>input:focus{border-color:var(--cyan);box-shadow:0 0 0 3px rgba(133,215,203,.1)}
+#php-version-input{width:90px}

@@ -151,18 +151,114 @@ async function systemCapabilities() {
   return { available, generated_config_root: root };
 }
 
-const INSTALLABLE_PACKAGES = new Set([
-  'nginx', 'apache2', 'certbot', 'php', 'php-fpm', 'mysql-server', 'mariadb-server',
-  'postgresql', 'docker-ce', 'docker-compose-plugin', 'fail2ban', 'postfix', 'dovecot-core',
-  'phpmyadmin', 'python3-venv', 'python3-pip', 'nodejs', 'npm', 'unzip', ' ufw'.trim(),
-]);
+const packages = require('./packages');
+const runtimes = require('./runtimes');
 
 async function installPackage(packageName) {
   const name = String(packageName || '').trim();
-  if (!INSTALLABLE_PACKAGES.has(name)) throw new Error('Package is not allowlisted');
+  if (!packages.INSTALLABLE_PACKAGES.has(name)) throw new Error('Package is not allowlisted');
   if (!paths.applySystem) return { package: name, installed: false, applied: false, reason: 'PANEL_APPLY_SYSTEM is disabled' };
   const result = await command('apt-get', ['install', '-y', '--no-install-recommends', name]);
-  return { package: name, installed: true, applied: true, output: `${result.stdout || ''}${result.stderr || ''}`.slice(-4000) };
+  const unit = packages.PACKAGE_UNITS[name];
+  let unitResult = null;
+  if (unit) {
+    try {
+      await command('systemctl', ['enable', '--now', unit]);
+      unitResult = { unit, enabled: true };
+    } catch (error) {
+      unitResult = { unit, enabled: false, error: error.message };
+    }
+  }
+  return { package: name, installed: true, applied: true, unit: unitResult, output: `${result.stdout || ''}${result.stderr || ''}`.slice(-4000) };
+}
+
+async function ensureOndrejPhp() {
+  await command('apt-get', ['install', '-y', '--no-install-recommends', 'software-properties-common', 'ca-certificates', 'gnupg']);
+  await command('add-apt-repository', ['-y', 'ppa:ondrej/php']);
+  await command('apt-get', ['update']);
+}
+
+async function installPhpVersion(version, extensions) {
+  const selected = packages.phpPackages(version, extensions);
+  if (!paths.applySystem) {
+    return { version: selected.version, installed: false, applied: false, reason: 'PANEL_APPLY_SYSTEM is disabled', extensions: selected.extensions };
+  }
+  await ensureOndrejPhp();
+  const result = await command('apt-get', ['install', '-y', '--no-install-recommends', ...selected.packages]);
+  await command('systemctl', ['enable', '--now', `php${selected.version}-fpm`]).catch(() => {});
+  return {
+    version: selected.version,
+    installed: true,
+    applied: true,
+    extensions: selected.extensions,
+    output: `${result.stdout || ''}${result.stderr || ''}`.slice(-4000),
+  };
+}
+
+function listPhpVersions() {
+  return {
+    versions: runtimes.phpMajors(),
+    discovered: runtimes.discoverPhpVersions(),
+    default: process.env.PANEL_PHP_VERSION || null,
+  };
+}
+
+function parseUnitList(stdout) {
+  const units = [];
+  for (const line of String(stdout || '').split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('UNIT ')) continue;
+    const match = trimmed.match(/^(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(.*)$/);
+    if (!match) continue;
+    const unit = match[1].endsWith('.service') ? match[1] : `${match[1]}.service`;
+    if (!packages.UNIT_NAME_RE.test(unit)) continue;
+    units.push({ unit, load: match[2], active: match[3], sub: match[4], description: match[5].trim() });
+  }
+  return units;
+}
+
+function parseUnitFiles(stdout) {
+  const enabled = new Map();
+  for (const line of String(stdout || '').split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('UNIT FILE')) continue;
+    const parts = trimmed.split(/\s+/);
+    if (parts.length < 2) continue;
+    const unit = parts[0].endsWith('.service') ? parts[0] : `${parts[0]}.service`;
+    if (!packages.UNIT_NAME_RE.test(unit)) continue;
+    enabled.set(unit, parts[1]);
+  }
+  return enabled;
+}
+
+async function listSystemdUnits() {
+  let listed = { stdout: '' };
+  let files = { stdout: '' };
+  try {
+    listed = await command('systemctl', ['list-units', '--type=service', '--all', '--no-pager', '--plain', '--no-legend']);
+  } catch {
+    listed = { stdout: '' };
+  }
+  try {
+    files = await command('systemctl', ['list-unit-files', '--type=service', '--no-pager', '--plain', '--no-legend']);
+  } catch {
+    files = { stdout: '' };
+  }
+  const enabledMap = parseUnitFiles(files.stdout);
+  const byName = new Map();
+  for (const item of parseUnitList(listed.stdout)) {
+    byName.set(item.unit, { ...item, enabled: enabledMap.get(item.unit) || 'unknown' });
+  }
+  for (const [unit, enabled] of enabledMap) {
+    if (!byName.has(unit)) {
+      byName.set(unit, { unit, load: 'not-found', active: 'inactive', sub: 'dead', description: '', enabled });
+    }
+  }
+  return { services: [...byName.values()].sort((a, b) => a.unit.localeCompare(b.unit)) };
+}
+
+async function controlSystemUnit(unit, action) {
+  return apply.controlSystemdUnit(packages.assertUnitName(unit), action, { command });
 }
 
 function command(program, args, options = {}) {
@@ -422,6 +518,10 @@ module.exports = {
   wordpressInstall,
   systemCapabilities,
   installPackage,
+  installPhpVersion,
+  listPhpVersions,
+  listSystemdUnits,
+  controlSystemUnit,
   command,
   siteUserName,
   applySiteOwnership,

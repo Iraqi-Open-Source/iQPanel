@@ -18,36 +18,37 @@ esac
 
 export DEBIAN_FRONTEND=noninteractive
 
-STACK="${PANEL_STACK:-all}"
+FULL=0
+STACK="${PANEL_STACK:-}"
+if [[ "${PANEL_FULL:-0}" == "1" ]]; then
+  FULL=1
+  STACK="${STACK:-all}"
+fi
 if [[ "${1:-}" == --stack=* ]]; then
+  FULL=1
   STACK="${1#--stack=}"
 elif [[ "${1:-}" == "--stack" ]]; then
+  FULL=1
   STACK="${2:-all}"
 fi
-case "${STACK}" in
-  all) WEB_PACKAGES=(nginx apache2); DB_PACKAGES=(mysql-server postgresql postgresql-contrib) ;;
-  lnmp) WEB_PACKAGES=(nginx); DB_PACKAGES=(mysql-server) ;;
-  lamp) WEB_PACKAGES=(apache2); DB_PACKAGES=(mysql-server) ;;
-  llmp) WEB_PACKAGES=(nginx); DB_PACKAGES=(mariadb-server) ;;
-  *) echo "Supported stacks: all, lnmp, lamp, llmp" >&2; exit 1 ;;
-esac
+if [[ "${FULL}" == "1" && -z "${STACK}" ]]; then
+  STACK=all
+fi
 
-COMPOSE_PACKAGE=(docker-compose-v2)
-if [[ "${VERSION_ID}" == "20.04" ]]; then
-  COMPOSE_PACKAGE=(docker-compose)
+WEB_PACKAGES=()
+DB_PACKAGES=()
+if [[ "${FULL}" == "1" ]]; then
+  case "${STACK}" in
+    all) WEB_PACKAGES=(nginx apache2); DB_PACKAGES=(mysql-server postgresql postgresql-contrib) ;;
+    lnmp) WEB_PACKAGES=(nginx); DB_PACKAGES=(mysql-server) ;;
+    lamp) WEB_PACKAGES=(apache2); DB_PACKAGES=(mysql-server) ;;
+    llmp) WEB_PACKAGES=(nginx); DB_PACKAGES=(mariadb-server) ;;
+    *) echo "Supported stacks: all, lnmp, lamp, llmp" >&2; exit 1 ;;
+  esac
 fi
 
 apt-get update
-apt-get install -y curl git unzip tar ca-certificates sqlite3 openssh-client software-properties-common \
-  certbot python3 python3-venv python3-pip ufw composer docker.io "${COMPOSE_PACKAGE[@]}" "${WEB_PACKAGES[@]}" "${DB_PACKAGES[@]}"
-
-if [[ "${PANEL_INSTALL_OPTIONAL:-0}" == "1" ]]; then
-  apt-get install -y fail2ban postfix dovecot-core phpmyadmin
-fi
-
-add-apt-repository -y ppa:ondrej/php
-apt-get update
-bash installer/php-versions.sh
+apt-get install -y curl git unzip tar ca-certificates sqlite3 openssl openssh-client
 
 if ! command -v node >/dev/null 2>&1 || [[ "$(node -v | sed 's/v//' | cut -d. -f1)" -lt 20 ]]; then
   curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
@@ -57,23 +58,44 @@ fi
 export PANEL_HOME=/var/lib/iqpanel
 export PANEL_NVM_HOME="${PANEL_HOME}/.nvm"
 export PANEL_PYENV_ROOT="${PANEL_HOME}/.pyenv"
-export PANEL_PHP_VERSIONS="${PANEL_PHP_VERSIONS:-7.4,8.2,8.3,8.4}"
-export PANEL_NODE_VERSIONS="${PANEL_NODE_VERSIONS:-18,20,22}"
-export PANEL_PYTHON_VERSIONS="${PANEL_PYTHON_VERSIONS:-3.10.14,3.11.9,3.12.4}"
-bash installer/nvm.sh
-bash installer/pyenv.sh
 
-DEFAULT_PHP="${PANEL_PHP_VERSION:-8.3}"
-systemctl disable --now apache2 || true
-systemctl enable --now nginx "php${DEFAULT_PHP}-fpm" mysql postgresql || true
+if [[ "${FULL}" == "1" ]]; then
+  COMPOSE_PACKAGE=(docker-compose-v2)
+  if [[ "${VERSION_ID}" == "20.04" ]]; then
+    COMPOSE_PACKAGE=(docker-compose)
+  fi
 
-if command -v ufw >/dev/null 2>&1; then
-  ufw --force default deny incoming
-  ufw --force default allow outgoing
-  ufw allow OpenSSH
-  ufw allow 80/tcp
-  ufw allow 443/tcp
-  ufw --force enable
+  apt-get install -y software-properties-common certbot python3 python3-venv python3-pip ufw composer docker.io \
+    "${COMPOSE_PACKAGE[@]}" "${WEB_PACKAGES[@]}" "${DB_PACKAGES[@]}"
+
+  if [[ "${PANEL_INSTALL_OPTIONAL:-0}" == "1" ]]; then
+    apt-get install -y fail2ban postfix dovecot-core phpmyadmin
+  fi
+
+  add-apt-repository -y ppa:ondrej/php
+  apt-get update
+  export PANEL_PHP_VERSIONS="${PANEL_PHP_VERSIONS:-7.4,8.2,8.3,8.4}"
+  export PANEL_NODE_VERSIONS="${PANEL_NODE_VERSIONS:-18,20,22}"
+  export PANEL_PYTHON_VERSIONS="${PANEL_PYTHON_VERSIONS:-3.10.14,3.11.9,3.12.4}"
+  bash installer/php-versions.sh
+  bash installer/nvm.sh
+  bash installer/pyenv.sh
+
+  DEFAULT_PHP="${PANEL_PHP_VERSION:-8.3}"
+  systemctl disable --now apache2 || true
+  systemctl enable --now nginx "php${DEFAULT_PHP}-fpm" mysql postgresql || true
+
+  if command -v ufw >/dev/null 2>&1; then
+    ufw --force default deny incoming
+    ufw --force default allow outgoing
+    ufw allow OpenSSH
+    ufw allow 80/tcp
+    ufw allow 443/tcp
+    ufw --force enable
+  fi
+else
+  STACK=none
+  DEFAULT_PHP="${PANEL_PHP_VERSION:-}"
 fi
 
 install -d -m 0755 /opt/iqpanel
@@ -84,7 +106,7 @@ chown -R root:root /opt/iqpanel
 chmod -R go-w /opt/iqpanel
 chown -R panel:panel /var/lib/iqpanel /var/www/sites /var/log/panel /var/backups/panel
 
-if ! grep -q 'sites-enabled' /etc/nginx/nginx.conf; then
+if [[ -f /etc/nginx/nginx.conf ]] && ! grep -q 'sites-enabled' /etc/nginx/nginx.conf; then
   echo "Warning: /etc/nginx/nginx.conf does not include sites-enabled. Add: include /etc/nginx/sites-enabled/*;" >&2
 fi
 
@@ -93,7 +115,8 @@ AGENT_TOKEN="$(openssl rand -hex 32)"
 ADMIN_PASSWORD="$(openssl rand -base64 18 | tr -d '/+=' | head -c 20)"
 ADMIN_HASH="$(node -e "const c=require('crypto'); process.stdout.write(c.scryptSync(process.argv[1],'iqpanel-admin',32).toString('hex'))" "${ADMIN_PASSWORD}")"
 
-cat > /etc/panel-agent/env <<EOF
+{
+  cat <<EOF
 PANEL_SECRET_KEY=${SECRET_KEY}
 PANEL_AGENT_TOKEN=${AGENT_TOKEN}
 PANEL_ADMIN_PASSWORD_HASH=${ADMIN_HASH}
@@ -104,14 +127,23 @@ PANEL_AGENT_LISTEN_HOST=0.0.0.0
 PANEL_DATA_ROOT=/var/lib/iqpanel
 PANEL_SITES_ROOT=/var/www/sites
 PANEL_APPLY_SYSTEM=1
-PANEL_PHP_VERSION=${DEFAULT_PHP}
-PANEL_PHP_VERSIONS=${PANEL_PHP_VERSIONS}
-PANEL_NODE_VERSIONS=${PANEL_NODE_VERSIONS}
-PANEL_PYTHON_VERSIONS=${PANEL_PYTHON_VERSIONS}
 PANEL_NVM_HOME=${PANEL_NVM_HOME}
 PANEL_PYENV_ROOT=${PANEL_PYENV_ROOT}
 PANEL_STACK=${STACK}
 EOF
+  if [[ -n "${DEFAULT_PHP}" ]]; then
+    echo "PANEL_PHP_VERSION=${DEFAULT_PHP}"
+  fi
+  if [[ -n "${PANEL_PHP_VERSIONS:-}" ]]; then
+    echo "PANEL_PHP_VERSIONS=${PANEL_PHP_VERSIONS}"
+  fi
+  if [[ -n "${PANEL_NODE_VERSIONS:-}" ]]; then
+    echo "PANEL_NODE_VERSIONS=${PANEL_NODE_VERSIONS}"
+  fi
+  if [[ -n "${PANEL_PYTHON_VERSIONS:-}" ]]; then
+    echo "PANEL_PYTHON_VERSIONS=${PANEL_PYTHON_VERSIONS}"
+  fi
+} > /etc/panel-agent/env
 chmod 0640 /etc/panel-agent/env
 chown root:panel /etc/panel-agent/env
 
@@ -124,3 +156,8 @@ echo "iQPanel is running on http://127.0.0.1:4173 (localhost only)."
 echo "Access from your machine with: ssh -L 4173:127.0.0.1:4173 user@this-server"
 echo "One-time admin password: ${ADMIN_PASSWORD}"
 echo "Store this password now. It is not written to disk in plaintext."
+if [[ "${FULL}" != "1" ]]; then
+  echo "Minimal install: only the panel and Agent are running."
+  echo "Install PHP versions, web servers, databases, and other services from the Dashboard."
+  echo "For a preinstalled stack instead: PANEL_FULL=1 sudo bash installer/install.sh"
+fi

@@ -90,7 +90,8 @@ test('PostgreSQL databases are accepted and never leak ciphertext', async () => 
 
 test('runtimes, docker, servers, and settings endpoints are available', async () => {
   const runtimes = await (await fetch(`${base}/api/runtimes`)).json();
-  assert.deepEqual(runtimes.php, ['8.2', '8.3']);
+  assert.ok(runtimes.php.includes('8.2'));
+  assert.ok(runtimes.php.includes('8.3'));
   const docker = await (await fetch(`${base}/api/docker`)).json();
   assert.equal(docker.available, false);
   const servers = await (await fetch(`${base}/api/servers`)).json();

@@ -8,6 +8,7 @@
     siteFilter: "all",
     pendingSiteSlug: "",
     servicesSiteSlug: "",
+    systemServices: [],
     logsStream: null,
     cronJobs: [],
     databases: [],
@@ -157,11 +158,14 @@
       $("#health-badge").hidden = true;
       return;
     }
-    const healthy = entries.every(([, value]) => String(value).toLowerCase() === "active");
+    const installed = entries.filter(([, value]) => String(value).toLowerCase() !== "not_installed");
+    const healthy = installed.length > 0 && installed.every(([, value]) => String(value).toLowerCase() === "active");
     $("#health-badge").hidden = !healthy;
     container.innerHTML = entries.map(([name, value]) => {
-      const ok = String(value).toLowerCase() === "active";
-      return `<div><span class="health-check">${ok ? "✓" : "!"}</span><span><strong>${escapeHtml(name.replace(/_/g, " "))}</strong><small>${escapeHtml(String(value))}</small></span><b>${ok ? "Running" : "Check"}</b></div>`;
+      const status = String(value).toLowerCase();
+      const ok = status === "active";
+      const missing = status === "not_installed";
+      return `<div><span class="health-check">${ok ? "✓" : missing ? "–" : "!"}</span><span><strong>${escapeHtml(name.replace(/_/g, " "))}</strong><small>${escapeHtml(String(value))}</small></span><b>${ok ? "Running" : missing ? "Not installed" : "Check"}</b></div>`;
     }).join("");
   };
 
@@ -205,7 +209,10 @@
     if (state.currentView === "deployments") await loadDeployments();
     if (state.currentView === "databases") await loadDatabases();
     if (state.currentView === "backups") await loadBackups();
-    if (state.currentView === "services") await loadServices();
+    if (state.currentView === "services") {
+      await loadServices();
+      await loadSystemServices().catch(() => {});
+    }
     if (state.currentView === "logs") await loadLogsView();
     if (state.currentView === "cron") await loadCron();
     if (state.currentView === "files") await loadFiles();
@@ -390,6 +397,46 @@
     select.innerHTML = '<option value="">Install package…</option>' + (result.packages || []).map((item) => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join("");
   };
 
+  const loadPhpVersions = async () => {
+    const label = $("#php-installed-versions");
+    if (!label) return;
+    const result = await api("/api/system/php");
+    const versions = result.discovered?.length ? result.discovered : (result.versions || []);
+    label.textContent = versions.length ? `Installed PHP: ${versions.join(", ")}` : "No PHP versions discovered yet. Install one below.";
+    const input = $("#php-version-input");
+    if (input && !input.dataset.touched && (result.default || versions[0])) input.value = result.default || versions[0];
+  };
+
+  const systemServiceBadge = (item) => {
+    const active = String(item.active || "").toLowerCase();
+    const enabled = String(item.enabled || "").toLowerCase();
+    if (active === "active") return "badge-ok";
+    if (enabled === "enabled" || active === "failed") return "badge-warn";
+    return "";
+  };
+
+  const renderSystemServices = (items = state.systemServices || []) => {
+    const list = $("#system-services-list");
+    if (!list) return;
+    const query = ($("#system-services-filter")?.value || "").trim().toLowerCase();
+    const filtered = query ? items.filter((item) => `${item.unit} ${item.description || ""} ${item.active || ""}`.toLowerCase().includes(query)) : items;
+    if (!filtered.length) {
+      list.innerHTML = emptyRow(query ? "No units match that filter." : "No systemd units reported.");
+      return;
+    }
+    list.innerHTML = filtered.map((item) => {
+      const unit = escapeHtml(item.unit);
+      const status = `${item.active || "unknown"}${item.sub ? ` / ${item.sub}` : ""}`;
+      return `<div class="data-row"><span><strong>${unit}</strong><small>${escapeHtml(item.description || item.enabled || "")}</small></span><span class="badge ${systemServiceBadge(item)}">${escapeHtml(status)}</span><span class="badge">${escapeHtml(item.enabled || "unknown")}</span><div class="row-actions"><button type="button" class="secondary-button" data-sys-action="start" data-unit="${unit}">Start</button><button type="button" class="secondary-button" data-sys-action="stop" data-unit="${unit}">Stop</button><button type="button" class="secondary-button" data-sys-action="restart" data-unit="${unit}">Restart</button><button type="button" class="secondary-button" data-sys-action="enable" data-unit="${unit}">Enable</button><button type="button" class="secondary-button" data-sys-action="disable" data-unit="${unit}">Disable</button></div></div>`;
+    }).join("");
+  };
+
+  const loadSystemServices = async () => {
+    const result = await api("/api/system/services");
+    state.systemServices = result.services || [];
+    renderSystemServices(state.systemServices);
+  };
+
   const loadAlertSettings = async () => {
     const form = $("#alerts-form");
     if (!form) return;
@@ -532,11 +579,13 @@
     if (view === "deployments") await loadDeployments();
     if (view === "databases") await loadDatabases();
     if (view === "backups") await loadBackups();
-    if (view === "services") await loadServices();
+    if (view === "services") {
+      await loadServices();
+      await Promise.all([loadPackageOptions(), loadPhpVersions(), loadSystemServices()]).catch(() => {});
+    }
     if (view === "logs") await loadLogsView();
     if (view === "cron") await loadCron();
     if (view === "files") await loadFiles();
-    if (view === "services") loadPackageOptions().catch(() => {});
     if (view === "settings") loadAlertSettings().catch(() => {});
     if (view === "settings") renderSettings();
     if (view !== "logs") stopLogsStream();
@@ -762,6 +811,30 @@
       if (!packageName) return;
       await api("/api/system/packages/install", { method: "POST", body: JSON.stringify({ package: packageName }) });
       showToast("Package installation queued");
+    });
+    $("#install-php-button")?.addEventListener("click", async () => {
+      const version = $("#php-version-input")?.value?.trim();
+      if (!version) return;
+      await api("/api/system/php/install", { method: "POST", body: JSON.stringify({ version }) });
+      showToast(`PHP ${version} installation queued`);
+      await loadPhpVersions().catch(() => {});
+    });
+    $("#php-version-input")?.addEventListener("input", (event) => {
+      event.currentTarget.dataset.touched = "1";
+    });
+    $("#system-services-refresh")?.addEventListener("click", async () => {
+      await loadSystemServices();
+      showToast("Service list refreshed");
+    });
+    $("#system-services-filter")?.addEventListener("input", () => renderSystemServices());
+    $("#system-services-list")?.addEventListener("click", async (event) => {
+      const button = event.target.closest("[data-sys-action]");
+      if (!button) return;
+      const unit = button.dataset.unit;
+      const action = button.dataset.sysAction;
+      await api(`/api/system/services/${encodeURIComponent(unit)}/${action}`, { method: "POST" });
+      showToast(`${action} queued for ${unit}`);
+      await loadSystemServices();
     });
     $("#alerts-form")?.addEventListener("submit", async (event) => {
       event.preventDefault();

@@ -78,7 +78,7 @@
               <section class="panel activity-panel"><div class="panel-heading"><div><h2>Activity</h2><p>Recent changes on this server.</p></div><button class="icon-button" aria-label="Activity options">•••</button></div><div class="activity-list" id="activity-list"></div>
                 <button class="activity-footer" type="button" data-view-link="deployments">Open activity log <span>→</span></button></section>
             </div>
-            <div class="bottom-grid"><section class="panel health-panel"><div class="panel-heading"><div><h2>Server health</h2><p id="health-subtitle">Core services status.</p></div><span class="healthy-badge" id="health-badge" hidden><i></i> Healthy</span></div><div class="service-health" id="service-health"></div></section><section class="panel quick-panel"><div class="panel-heading"><div><h2>Quick actions</h2><p>Common server operations.</p></div></div><div class="quick-actions"><button type="button" data-open-modal="site-modal"><span>+</span><b>Add a site</b><small>Deploy from Git</small></button><button type="button" data-open-modal="database-modal"><span>◉</span><b>New database</b><small>MySQL or PostgreSQL</small></button><button type="button" data-view-link="backups"><span>↻</span><b>View backups</b><small>Site snapshots</small></button></div></section></div>
+            <div class="bottom-grid"><section class="panel health-panel"><div class="panel-heading"><div><h2>Server health</h2><p id="health-subtitle">Core services status. Missing packages can be installed from Services.</p></div><span class="healthy-badge" id="health-badge" hidden><i></i> Healthy</span></div><div class="service-health" id="service-health"></div></section><section class="panel quick-panel"><div class="panel-heading"><div><h2>Quick actions</h2><p>Common server operations.</p></div></div><div class="quick-actions"><button type="button" data-open-modal="site-modal"><span>+</span><b>Add a site</b><small>Deploy from Git</small></button><button type="button" data-open-modal="database-modal"><span>◉</span><b>New database</b><small>MySQL or PostgreSQL</small></button><button type="button" data-view-link="backups"><span>↻</span><b>View backups</b><small>Site snapshots</small></button></div></section></div>
           </section>
 
           <section class="view" id="sites-view"><div class="page-heading"><div><p class="eyebrow">WORKSPACE / SITES</p><h1>Your sites<span class="heading-period">.</span></h1><p class="subheading">Deploy, monitor, and manage every application from one place.</p></div><button class="primary-button" type="button" data-open-modal="site-modal"><span>+</span> New site</button></div><div class="toolbar"><div class="search-box"><span>⌕</span><input id="site-search" type="search" placeholder="Search sites..." /></div><div class="filter-tabs" id="site-filter-tabs"><button type="button" class="selected" data-filter="all">All</button><button type="button" data-filter="online">Online</button><button type="button" data-filter="attention">Needs attention</button></div></div><div id="full-site-list" class="full-site-list"></div></section>
@@ -123,9 +123,34 @@
               <div>
                 <p class="eyebrow">INFRASTRUCTURE / SERVICES</p>
                 <h1>Services<span class="heading-period">.</span></h1>
-                <p class="subheading">Systemd units managed per site.</p>
+                <p class="subheading">Monitor host units and install PHP, web servers, and databases from the dashboard.</p>
               </div>
-               <div class="row-actions"><select id="service-package-select"><option value="">Install package…</option></select><button class="secondary-button" type="button" id="install-package-button">Install</button><button class="primary-button" type="button" id="create-service-button" disabled><span>+</span> Create service</button></div>
+            </div>
+            <div class="content-grid">
+              <section class="panel">
+                <div class="panel-heading"><div><h2>Install a service</h2><p>Allowlisted packages are queued to the root Agent.</p></div></div>
+                <div class="row-actions"><select id="service-package-select"><option value="">Install package…</option></select><button class="secondary-button" type="button" id="install-package-button">Install</button></div>
+              </section>
+              <section class="panel">
+                <div class="panel-heading"><div><h2>Install PHP</h2><p>Custom version via ppa:ondrej/php with FPM and common extensions.</p></div></div>
+                <div class="row-actions"><input id="php-version-input" value="8.3" placeholder="8.3" aria-label="PHP version"><button class="secondary-button" type="button" id="install-php-button">Install PHP</button></div>
+                <p class="subheading" id="php-installed-versions" style="margin-top:12px">No PHP versions discovered yet.</p>
+              </section>
+            </div>
+            <div class="toolbar">
+              <label class="search-box logs-site-label">Filter units
+                <input id="system-services-filter" placeholder="nginx, mysql, php…" />
+              </label>
+              <button class="secondary-button" type="button" id="system-services-refresh">Refresh</button>
+            </div>
+            <div class="panel"><div class="panel-heading"><div><h2>Host services</h2><p>Every systemd unit on this server.</p></div></div><div class="data-list" id="system-services-list"></div></div>
+            <div class="page-heading" style="margin-top:28px;margin-bottom:18px">
+              <div>
+                <p class="eyebrow">SITE UNITS</p>
+                <h1 style="font-size:22px">Per-site systemd<span class="heading-period">.</span></h1>
+                <p class="subheading">Queue, Horizon, Node, and other units generated for a site.</p>
+              </div>
+              <div class="row-actions"><button class="primary-button" type="button" id="create-service-button" disabled><span>+</span> Create service</button></div>
             </div>
             <div class="toolbar">
               <label class="search-box logs-site-label">Site

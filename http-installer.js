@@ -1,10 +1,12 @@
-const { send, body, log, queue } = require('./http-shared');
+const { send, body, log, queue, agentClient } = require('./http-shared');
+const { publicSettings } = require('./http-settings');
+const packages = require('./packages');
 
-const PACKAGE_ALLOWLIST = new Set([
-  'nginx', 'apache2', 'certbot', 'php', 'php-fpm', 'mysql-server', 'mariadb-server',
-  'postgresql', 'docker-ce', 'docker-compose-plugin', 'fail2ban', 'postfix', 'dovecot-core',
-  'phpmyadmin', 'python3-venv', 'python3-pip', 'nodejs', 'npm', 'unzip', 'ufw',
-]);
+const PACKAGE_ALLOWLIST = packages.INSTALLABLE_PACKAGES;
+
+function activeServerId() {
+  return publicSettings().active_server_id || 'local';
+}
 
 async function handleInstaller(request, response, pathname) {
   if (request.method === 'GET' && pathname === '/api/system/packages') {
@@ -13,15 +15,39 @@ async function handleInstaller(request, response, pathname) {
   }
   if (request.method === 'POST' && pathname === '/api/system/packages/install') {
     const input = await body(request);
-    const packages = Array.isArray(input.packages) ? input.packages : [input.package];
-    const selected = [...new Set(packages.map((item) => String(item || '').trim()))].filter(Boolean);
+    const names = Array.isArray(input.packages) ? input.packages : [input.package];
+    const selected = [...new Set(names.map((item) => String(item || '').trim()))].filter(Boolean);
     if (!selected.length || selected.some((item) => !PACKAGE_ALLOWLIST.has(item))) {
       send(response, 400, { error: 'Every package must be on the allowlist' });
       return true;
     }
-    const jobs = selected.map((packageName) => queue.enqueue('installPackage', { package: packageName }));
+    const serverId = activeServerId();
+    const jobs = selected.map((packageName) => queue.enqueue('installPackage', { package: packageName, server_id: serverId }));
     log('Package installation queued', 'system', selected.join(', '));
     send(response, 202, { status: 'queued', jobs: jobs.map((job) => job.id), packages: selected });
+    return true;
+  }
+  if (request.method === 'GET' && pathname === '/api/system/php') {
+    const result = await agentClient.forServer(activeServerId()).invoke('listPhpVersions');
+    send(response, 200, result);
+    return true;
+  }
+  if (request.method === 'POST' && pathname === '/api/system/php/install') {
+    const input = await body(request);
+    let selected;
+    try {
+      selected = packages.phpPackages(input.version, input.extensions);
+    } catch (error) {
+      send(response, 400, { error: error.message });
+      return true;
+    }
+    const job = queue.enqueue('installPhp', {
+      version: selected.version,
+      extensions: selected.extensions,
+      server_id: activeServerId(),
+    });
+    log('PHP installation queued', selected.version);
+    send(response, 202, { status: 'queued', job_id: job.id, version: selected.version, extensions: selected.extensions });
     return true;
   }
   return false;

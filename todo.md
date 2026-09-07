@@ -150,6 +150,9 @@ Depends on: Phase 3 complete.
 - [x] Python multi-version via `pyenv` per site
 - [x] Automated end-to-end installer smoke on fresh Ubuntu VM (GitHub Actions)
 - [x] Frontend modernization (component framework, design tokens)
+- [x] Minimal installer by default (panel + Agent only); stack packages and PHP versions install from the Dashboard
+- [x] Host systemd monitor API and Dashboard controls for every unit
+- [x] On-demand PHP version installer (`ppa:ondrej/php`) from the Dashboard
 
 ## Phase 3 feature foundations and workflows shipped
 
@@ -164,11 +167,12 @@ Do not mark a Phase 3 slice complete until it has API, safe privileged implement
 
 ## Manual verification (Ubuntu VM)
 
-1. Run `sudo bash installer/install.sh` on Ubuntu 20.04, 22.04, or 24.04
+1. Run `sudo bash installer/install.sh` on Ubuntu 20.04, 22.04, or 24.04 (minimal: panel + Agent only)
 2. Tunnel: `ssh -L 4173:127.0.0.1:4173 user@server`
 3. Sign in with the one-time admin password
-4. Create a PHP or Apache site, add deploy key to GitHub, clone, apply config
-5. Confirm Nginx or Apache serves the site (`curl` the assigned port or domain)
-6. Create a PostgreSQL database and a Telegram/FTP backup destination in Settings
-7. Open the web terminal, run a harmless command, then close the session
-8. Delete the site and confirm vhost/pool/unit/cron entries are removed
+4. In Services, confirm host units are listed, then install Nginx and a PHP version from the Dashboard
+5. Create a PHP or Apache site, add deploy key to GitHub, clone, apply config
+6. Confirm Nginx or Apache serves the site (`curl` the assigned port or domain)
+7. Create a PostgreSQL database and a Telegram/FTP backup destination in Settings
+8. Open the web terminal, run a harmless command, then close the session
+9. Delete the site and confirm vhost/pool/unit/cron entries are removed

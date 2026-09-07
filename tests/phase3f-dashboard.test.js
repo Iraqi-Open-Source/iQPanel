@@ -121,6 +121,8 @@ test('service installer exposes allowlist and rejects arbitrary packages', async
   assert.equal(packages.response.status, 200);
   assert.ok(packages.payload.packages.includes('nginx'));
   assert.ok(packages.payload.packages.includes('fail2ban'));
+  assert.ok(packages.payload.packages.includes('redis-server'));
+  assert.ok(packages.payload.packages.includes('docker.io'));
 
   const queued = await json(`${base}/api/system/packages/install`, {
     method: 'POST',
@@ -136,6 +138,46 @@ test('service installer exposes allowlist and rejects arbitrary packages', async
     body: JSON.stringify({ package: 'bash -c id' }),
   });
   assert.equal(rejected.response.status, 400);
+});
+
+test('PHP installer validates versions and queues installs', async () => {
+  const inventory = await json(`${base}/api/system/php`);
+  assert.equal(inventory.response.status, 200);
+  assert.ok(Array.isArray(inventory.payload.versions));
+  assert.ok(Array.isArray(inventory.payload.discovered));
+
+  const queued = await json(`${base}/api/system/php/install`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ version: '8.3' }),
+  });
+  assert.equal(queued.response.status, 202);
+  assert.equal(queued.payload.version, '8.3');
+  assert.ok(queued.payload.extensions.includes('fpm'));
+
+  const rejected = await json(`${base}/api/system/php/install`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ version: '8.3; rm -rf /' }),
+  });
+  assert.equal(rejected.response.status, 400);
+});
+
+test('host services endpoint lists systemd units and rejects unsafe unit names', async () => {
+  const listed = await json(`${base}/api/system/services`);
+  assert.equal(listed.response.status, 200);
+  assert.ok(Array.isArray(listed.payload.services));
+
+  const unsafe = await json(`${base}/api/system/services/${encodeURIComponent('nginx;id.service')}/start`, { method: 'POST' });
+  assert.equal(unsafe.response.status, 400);
+
+  const missingSuffix = await json(`${base}/api/system/services/nginx/start`, { method: 'POST' });
+  assert.ok([400, 404].includes(missingSuffix.response.status));
+
+  const generated = await json(`${base}/api/system/services/nginx.service/start`, { method: 'POST' });
+  assert.equal(generated.response.status, 200);
+  assert.equal(generated.payload.applied, false);
+  assert.equal(generated.payload.unitName, 'nginx.service');
 });
 
 test('wordpress API reports availability without shell injection', async () => {
@@ -154,7 +196,7 @@ test('wordpress API reports availability without shell injection', async () => {
 
 test('feature catalog lists Phase 3F dashboard workflows', async () => {
   const { payload } = await json(`${base}/api/system/features`);
-  for (const feature of ['file_manager', 'wordpress', 'alerts', 'service_installer']) {
+  for (const feature of ['file_manager', 'wordpress', 'alerts', 'service_installer', 'host_services', 'php_installer']) {
     assert.equal(payload[feature].status, 'available');
   }
 });

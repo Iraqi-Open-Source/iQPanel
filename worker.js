@@ -79,6 +79,11 @@ const handlers = {
     log('Package installation completed', payload.package);
     return result;
   },
+  async installPhp(payload) {
+    const result = await agentForPayload(payload).invoke('installPhpVersion', payload.version, payload.extensions);
+    log('PHP installation completed', payload.version);
+    return result;
+  },
 };
 
 let busy = false;

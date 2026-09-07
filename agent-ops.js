@@ -221,16 +221,26 @@ function ping() {
 async function serviceStatus() {
   async function unitState(unit) {
     try {
-      const result = await agent.command("systemctl", ["is-active", unit]);
-      return (result.stdout || "").trim() || "unknown";
+      const result = await agent.command("systemctl", ["show", "-p", "LoadState", "-p", "ActiveState", unit]);
+      const parsed = Object.fromEntries(
+        String(result.stdout || "")
+          .split("\n")
+          .map((line) => {
+            const index = line.indexOf("=");
+            return index === -1 ? null : [line.slice(0, index), line.slice(index + 1)];
+          })
+          .filter(Boolean),
+      );
+      if (!parsed.LoadState || parsed.LoadState === "not-found") return "not_installed";
+      return parsed.ActiveState || "unknown";
     } catch {
-      return "inactive";
+      return "not_installed";
     }
   }
   return {
-    nginx: await unitState("nginx"),
-    php_fpm: await unitState(`php${paths.phpVersion}-fpm`),
-    mysql: await unitState("mysql"),
+    nginx: await unitState("nginx.service"),
+    php_fpm: await unitState(`php${paths.phpVersion}-fpm.service`),
+    mysql: await unitState("mysql.service"),
   };
 }
 

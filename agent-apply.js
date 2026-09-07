@@ -84,12 +84,13 @@ async function applySystemdUnit(site, template, { writeSystemdTemplate, command 
 }
 
 async function controlSystemdUnit(unitName, action, { command }) {
-  if (!['start', 'stop', 'restart', 'disable'].includes(action)) throw new Error('Unsupported systemd action');
+  if (!['start', 'stop', 'restart', 'enable', 'disable'].includes(action)) throw new Error('Unsupported systemd action');
   if (!paths.applySystem) return { applied: false, unitName, action };
   if (action === 'disable') await command('systemctl', ['disable', '--now', unitName]);
+  else if (action === 'enable') await command('systemctl', ['enable', '--now', unitName]);
   else await command('systemctl', [action, unitName]);
   const status = await command('systemctl', ['is-active', unitName]).catch(() => ({ stdout: 'inactive' }));
-  return { applied: true, unitName, action, status: status.stdout.trim() };
+  return { applied: true, unitName, action, status: (status.stdout || '').trim() || 'inactive' };
 }
 
 function removeNginxConfig(slug, assertSlug) {

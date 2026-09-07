@@ -17,6 +17,8 @@ const FEATURE_CATALOG = {
   phpmyadmin: { status: 'available', api: '/api/system/phpmyadmin' },
   disk_extension: { status: 'available', api: '/api/system/disk/extend' },
   service_installer: { status: 'available', api: '/api/system/packages/install' },
+  host_services: { status: 'available', api: '/api/system/services' },
+  php_installer: { status: 'available', api: '/api/system/php/install' },
 };
 
 function setting(key) { return db.rows(`SELECT value FROM settings WHERE key=${db.sql(key)}`)[0]?.value || ''; }
@@ -53,6 +55,29 @@ async function handleSystem(request, response, pathname) {
     });
     log('Site user migration queued', 'panel', `${pending.length} sites`);
     send(response, 202, { status: 'queued', job_id: job.id, pending: pending.length });
+    return true;
+  }
+  if (request.method === 'GET' && pathname === '/api/system/services') {
+    const { publicSettings } = require('./http-settings');
+    const packages = require('./packages');
+    const result = await agentClient.forServer(publicSettings().active_server_id || 'local').invoke('listSystemdUnits');
+    send(response, 200, { services: (result.services || []).filter((item) => packages.UNIT_NAME_RE.test(item.unit)) });
+    return true;
+  }
+  const serviceMatch = pathname.match(/^\/api\/system\/services\/([^/]+)\/(start|stop|restart|enable|disable)$/);
+  if (request.method === 'POST' && serviceMatch) {
+    const { publicSettings } = require('./http-settings');
+    const packages = require('./packages');
+    let unit;
+    try {
+      unit = packages.assertUnitName(decodeURIComponent(serviceMatch[1]));
+    } catch (error) {
+      send(response, 400, { error: error.message });
+      return true;
+    }
+    const result = await agentClient.forServer(publicSettings().active_server_id || 'local').invoke('controlSystemUnit', unit, serviceMatch[2]);
+    log('System service updated', unit, serviceMatch[2]);
+    send(response, 200, result);
     return true;
   }
   return false;

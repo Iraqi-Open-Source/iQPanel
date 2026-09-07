@@ -74,7 +74,7 @@ if [[ "${FULL}" == "1" ]]; then
 
   add-apt-repository -y ppa:ondrej/php
   apt-get update
-  export PANEL_PHP_VERSIONS="${PANEL_PHP_VERSIONS:-7.4,8.2,8.3,8.4}"
+  export PANEL_PHP_VERSIONS="${PANEL_PHP_VERSIONS:-7.4,8.2,8.3,8.4,8.5}"
   export PANEL_NODE_VERSIONS="${PANEL_NODE_VERSIONS:-18,20,22}"
   export PANEL_PYTHON_VERSIONS="${PANEL_PYTHON_VERSIONS:-3.10.14,3.11.9,3.12.4}"
   bash installer/php-versions.sh

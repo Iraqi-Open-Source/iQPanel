@@ -24,40 +24,31 @@ Supported hosts: Ubuntu **20.04**, **22.04**, and **24.04** (amd64 or arm64), wi
 
 The installer is **minimal by default**: Node.js 20, the panel API, and the root Agent. Nginx, PHP, MySQL, Docker, and similar packages are installed later from the Dashboard.
 
-### 1. Get the source on the server
+### 1. Install (no clone)
 
-With Git:
+On a new Ubuntu server:
 
 ```bash
-sudo apt-get update
-sudo apt-get install -y git
+curl -fsSL https://raw.githubusercontent.com/Iraqi-Open-Source/iQPanel/main/installer/install.sh | sudo bash
+```
+
+The script downloads the full source tarball, then installs the panel. Save the **one-time admin password** printed at the end.
+
+Optional full stack in the same command:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Iraqi-Open-Source/iQPanel/main/installer/install.sh | sudo bash -s -- --stack=lnmp
+```
+
+### 2. Install from a local checkout (optional)
+
+```bash
 git clone https://github.com/Iraqi-Open-Source/iQPanel.git
 cd iQPanel
-```
-
-Without Git (tarball):
-
-```bash
-sudo apt-get update
-sudo apt-get install -y curl tar
-curl -fsSL https://github.com/Iraqi-Open-Source/iQPanel/archive/refs/heads/main.tar.gz -o iqpanel.tar.gz
-tar -xzf iqpanel.tar.gz
-cd iQPanel-main
-```
-
-Do not pipe `install.sh` from the network. The script copies the current directory into `/opt/iqpanel`.
-
-### 2. Run the installer
-
-Minimal (recommended):
-
-```bash
 sudo bash installer/install.sh
 ```
 
-Save the **one-time admin password** printed at the end.
-
-Optional full stack (packages now, not from the Dashboard):
+Or with a stack:
 
 ```bash
 sudo bash installer/install.sh --stack=lnmp

@@ -470,7 +470,9 @@
       const form = new FormData(event.currentTarget);
       const payload = Object.fromEntries(form.entries());
       payload.enabled = form.get("enabled") === "on";
+      payload.escalate = form.get("escalate") === "on";
       if (!payload.site_slug) delete payload.site_slug;
+      if (!payload.run_as_user) delete payload.run_as_user;
       try {
         await api("/api/cron", { method: "POST", body: JSON.stringify(payload) });
         closeModals();

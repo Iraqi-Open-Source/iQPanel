@@ -660,7 +660,7 @@ Maps advertised WPanel capabilities to iQPanel phase slices. Do not mark a row c
 | Per-site file API, WP-CLI API, feature catalog, alert config | 2 foundations | shipped (API only) |
 | Multi-server Agent invoke | 3A | planned |
 | GitHub auto-deploy and rollback | 3B | planned |
-| Per-site Unix user isolation | 3C | planned |
+| Per-site Unix user isolation | 3C | shipped |
 | Team roles, TOTP 2FA, audit log UI | 3D | planned |
 | OpenLiteSpeed, stack presets, Fail2Ban, swap, disk, SSH keys, mail, phpMyAdmin, Cloudflare | 3E | planned |
 | File manager UI, WordPress UI, service installer UI, alert delivery | 3F | planned |

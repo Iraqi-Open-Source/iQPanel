@@ -5,6 +5,7 @@ const { root } = require('./db');
 const paths = require('./paths');
 const { renderTemplate } = require('./template');
 const { nginxListenPort, upstreamPort } = require('./ports');
+const { applySiteOwnership, removeSiteUser, siteUserName } = require('./site-user');
 
 const sitesRoot = process.env.PANEL_SITES_ROOT || path.join(root, 'sites');
 fs.mkdirSync(sitesRoot, { recursive: true, mode: 0o750 });
@@ -105,7 +106,15 @@ function createSite(slug) {
   if (!fs.existsSync(keyPath)) {
     execKeygen(keyPath);
   }
-  return { directory, keyPath, publicKey: fs.readFileSync(`${keyPath}.pub`, 'utf8').trim() };
+  const provisioned = applySiteOwnership(slug, directory);
+  return {
+    directory,
+    keyPath,
+    publicKey: fs.readFileSync(`${keyPath}.pub`, 'utf8').trim(),
+    run_as_user: provisioned.user,
+    user_script: provisioned.path,
+    user_applied: provisioned.applied,
+  };
 }
 
 function execKeygen(keyPath) {
@@ -120,11 +129,15 @@ async function cloneRepository(slug, repoUrl) {
   if (!/^git@[\w.-]+:[\w./-]+(?:\.git)?$/.test(repoUrl)) throw new Error('Only SSH Git URLs are supported');
   const appPath = path.join(directory, 'app');
   if (fs.existsSync(path.join(appPath, '.git'))) {
-    return command('git', ['-C', appPath, 'pull', '--ff-only'], { env: { ...process.env, GIT_SSH_COMMAND: `ssh -i ${keyPath} -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new` } });
+    const pulled = await command('git', ['-C', appPath, 'pull', '--ff-only'], { env: { ...process.env, GIT_SSH_COMMAND: `ssh -i ${keyPath} -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new` } });
+    applySiteOwnership(slug, directory);
+    return pulled;
   }
   fs.rmSync(appPath, { recursive: true, force: true });
   fs.mkdirSync(appPath, { recursive: true });
-  return command('git', ['clone', repoUrl, appPath], { env: { ...process.env, GIT_SSH_COMMAND: `ssh -i ${keyPath} -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new` } });
+  const cloned = await command('git', ['clone', repoUrl, appPath], { env: { ...process.env, GIT_SSH_COMMAND: `ssh -i ${keyPath} -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new` } });
+  applySiteOwnership(slug, directory);
+  return cloned;
 }
 
 async function repositoryHead(slug) {
@@ -154,6 +167,7 @@ function nginxTemplateVars(site) {
     site_root: path.join(sitePath(site.slug), 'app'),
     site_path: sitePath(site.slug),
     upstream_port: upstreamPort(site) || listenPort,
+    run_as_user: site.run_as_user || siteUserName(site.slug),
   };
 }
 
@@ -176,6 +190,7 @@ function writePhpPool(site) {
     slug: site.slug,
     memory_limit: site.memory_limit || '256M',
     upload_max_filesize: site.upload_max_filesize || '64M',
+    run_as_user: site.run_as_user || siteUserName(site.slug),
   }), { mode: 0o640 });
   return { filePath, version };
 }
@@ -187,6 +202,7 @@ function writeSystemdTemplate(site, template = 'laravel-queue') {
     slug: site.slug,
     php_version: site.runtime_version || paths.phpVersion,
     site_path: sitePath(site.slug),
+    run_as_user: site.run_as_user || siteUserName(site.slug),
   }), { mode: 0o640 });
   return { filePath, template, unitName: `panel-${site.slug}-${template}` };
 }
@@ -244,6 +260,7 @@ async function installSite(site) {
     const result = await command(program, args, { cwd: app });
     output.push(`${program} ${args.join(' ')}\n${result.stdout}${result.stderr}`);
   }
+  applySiteOwnership(site.slug, sitePath(site.slug));
   return output.join('\n');
 }
 
@@ -257,7 +274,16 @@ async function removeSite(slug, options = {}) {
     await command('systemctl', ['reload', `php${options.runtime_version || paths.phpVersion}-fpm`]).catch(() => {});
   }
   fs.rmSync(sitePath(slug), { recursive: true, force: true });
-  return { removed: true, slug };
+  const user = options.run_as_user || siteUserName(slug);
+  const userResult = removeSiteUser(user, { removeUser: options.remove_user !== false, slug });
+  return { removed: true, slug, run_as_user: user, user_removed: userResult.removed };
+}
+
+function migrateSiteUser(slug) {
+  const directory = sitePath(slug);
+  fs.mkdirSync(path.join(directory, 'app'), { recursive: true, mode: 0o750 });
+  const provisioned = applySiteOwnership(slug, directory);
+  return { slug, run_as_user: provisioned.user, applied: provisioned.applied, path: provisioned.path };
 }
 
 module.exports = {
@@ -286,4 +312,7 @@ module.exports = {
   wordpress,
   systemCapabilities,
   command,
+  siteUserName,
+  applySiteOwnership,
+  migrateSiteUser,
 };

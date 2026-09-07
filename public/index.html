@@ -225,7 +225,8 @@
           <label>Site <span class="optional">optional</span><select name="site_slug" id="cron-site-select"><option value="">Server-wide</option></select></label>
           <label>Schedule<input name="schedule" required placeholder="*/5 * * * *" /></label>
           <label>Command<input name="command" required placeholder="/usr/bin/php artisan schedule:run" /></label>
-          <label>Run as user<input name="run_as_user" value="www-data" /></label>
+          <label>Run as user <span class="optional">defaults to site user</span><input name="run_as_user" placeholder="iqpanel-site-slug" /></label>
+          <label class="cron-enabled-row"><input type="checkbox" name="escalate" /> Escalate to a different user</label>
           <label class="cron-enabled-row"><input type="checkbox" name="enabled" checked /> Enabled</label>
           <div class="modal-actions"><button type="button" class="secondary-button" data-close-modal>Cancel</button><button class="primary-button" type="submit">Save <span>→</span></button></div>
         </form>

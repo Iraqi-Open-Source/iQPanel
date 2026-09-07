@@ -21,7 +21,7 @@ function writeSystemdTemplate(site, template, sitePath) {
     php_version: site.runtime_version || paths.phpVersion,
     node_version: site.node_version || site.runtime_version || '20',
     port: String(site.app_port || site.port || 8000),
-    run_as_user: site.run_as_user || 'www-data',
+    run_as_user: site.run_as_user || require('./site-user').siteUserName(site.slug),
     site_path: sitePath(site.slug),
     entrypoint: site.entrypoint || 'dist/main.js',
   }), { mode: 0o640 });

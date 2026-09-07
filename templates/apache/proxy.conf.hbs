@@ -1,5 +1,9 @@
 <VirtualHost *:{{listen_port}}>
     ServerName {{server_name}}
+    <IfModule mpm_itk.c>
+        AssignUserID {{run_as_user}} {{run_as_user}}
+    </IfModule>
+    SuexecUserGroup {{run_as_user}} {{run_as_user}}
     ProxyPreserveHost On
     ProxyRequests Off
     ProxyPass / http://127.0.0.1:{{upstream_port}}/

@@ -94,7 +94,11 @@ async function handleSites(request, response, pathname) {
     return true;
   }
   if (request.method === 'DELETE' && !siteMatch[2]) {
-    await siteAgent(site).invoke('removeSite', site.slug, { runtime_version: site.runtime_version });
+    await siteAgent(site).invoke('removeSite', site.slug, {
+      runtime_version: site.runtime_version,
+      run_as_user: site.run_as_user,
+      remove_user: db.rows(`SELECT id FROM sites WHERE run_as_user=${db.sql(site.run_as_user)} AND id!=${db.sql(site.id)}`).length === 0,
+    });
     db.run(`DELETE FROM sites WHERE id=${db.sql(site.id)}`);
     log('Site deleted', site.name);
     send(response, 204, {});

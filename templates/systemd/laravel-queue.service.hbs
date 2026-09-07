@@ -3,7 +3,7 @@ Description=Laravel Queue Worker - {{slug}}
 After=network.target
 
 [Service]
-User=www-data
+User={{run_as_user}}
 WorkingDirectory={{site_path}}/app
 ExecStart=/usr/bin/php{{php_version}} artisan queue:work --sleep=3 --tries=3
 Restart=always

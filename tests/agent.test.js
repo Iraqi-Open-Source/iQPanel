@@ -62,6 +62,7 @@ test('renders Nginx and PHP-FPM configs from templates', () => {
   assert.match(nginx, /server_name app\.test;/);
   assert.match(nginx, /fastcgi_pass unix:\/run\/php\/templated\.sock;/);
   assert.match(pool, /\[templated\]/);
+  assert.match(pool, /user = iqpanel-templated/);
   assert.match(pool, /memory_limit/);
 });
 

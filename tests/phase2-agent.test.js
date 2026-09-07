@@ -28,7 +28,8 @@ test('renders Apache PHP, proxy, and static vhosts from templates', () => {
   const stat = fs.readFileSync(agent.writeApacheConfig(staticSite), 'utf8');
   assert.match(php, /<VirtualHost \*:80>/);
   assert.match(php, /ServerName php\.test/);
-  assert.match(php, /proxy:unix:\/run\/php\/apache-php\.sock\|fcgi:\/\/localhost/);
+  assert.match(php, /SuexecUserGroup iqpanel-apache-php iqpanel-apache-php/);
+  assert.match(php, /AssignUserID iqpanel-apache-php iqpanel-apache-php/);
   assert.match(proxy, /ProxyPass \/ http:\/\/127\.0\.0\.1:9101\//);
   assert.match(stat, /FallbackResource \/index.html/);
 });
@@ -70,7 +71,8 @@ test('renders FastAPI, Node, and ASP.NET systemd templates', () => {
   const fastapi = fs.readFileSync(agent.writeSystemdTemplate(site, 'fastapi').filePath, 'utf8');
   const node = fs.readFileSync(agent.writeSystemdTemplate(site, 'node').filePath, 'utf8');
   const aspnet = fs.readFileSync(agent.writeSystemdTemplate(site, 'aspnet').filePath, 'utf8');
-  assert.match(fastapi, /uvicorn/);
+  assert.match(fastapi, /User=iqpanel-multi-svc/);
+  assert.match(node, /User=iqpanel-multi-svc/);
   assert.match(node, /node_version|PORT=9200|dist\/main\.js/);
   assert.match(aspnet, /dotnet/);
 });

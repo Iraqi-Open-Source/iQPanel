@@ -1,18 +1,24 @@
 const { spawn } = require('node:child_process');
 const crypto = require('node:crypto');
+const paths = require('./paths');
 
 const sessions = new Map();
 
 function createSession(options = {}) {
   const id = crypto.randomUUID();
-  const command = options.command || process.env.SHELL || 'bash';
-  const args = Array.isArray(options.args) ? options.args : [];
+  let command = options.command || process.env.SHELL || 'bash';
+  let args = Array.isArray(options.args) ? options.args : [];
+  const user = options.user || null;
+  if (user && paths.applySystem) {
+    args = ['-u', user, '--', command, ...args];
+    command = 'sudo';
+  }
   const child = spawn(command, args, {
     cwd: options.cwd || process.cwd(),
     env: { ...process.env, TERM: 'xterm-256color' },
     stdio: ['pipe', 'pipe', 'pipe'],
   });
-  const session = { id, child, chunks: [], closed: false, startedAt: new Date().toISOString() };
+  const session = { id, child, chunks: [], closed: false, startedAt: new Date().toISOString(), user, cwd: options.cwd || process.cwd() };
   const append = (chunk) => { session.chunks.push(Buffer.from(chunk)); };
   child.stdout?.on('data', append);
   child.stderr?.on('data', append);
@@ -22,7 +28,7 @@ function createSession(options = {}) {
     session.closed = true;
   });
   sessions.set(id, session);
-  return { id, startedAt: session.startedAt };
+  return { id, startedAt: session.startedAt, user, cwd: session.cwd };
 }
 
 function requireSession(id) {
@@ -49,7 +55,7 @@ function get(id) {
 
 function snapshot(id) {
   const session = requireSession(id);
-  return { id, text: read(id), closed: session.closed, startedAt: session.startedAt };
+  return { id, text: read(id), closed: session.closed, startedAt: session.startedAt, user: session.user || null, cwd: session.cwd };
 }
 
 function close(id) {

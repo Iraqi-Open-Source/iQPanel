@@ -100,6 +100,7 @@ ensureColumn('sites', 'public_access', 'INTEGER NOT NULL DEFAULT 0');
 ensureColumn('backups', 'details', "TEXT NOT NULL DEFAULT ''");
 ensureColumn('sites', 'deploy_branch', "TEXT NOT NULL DEFAULT 'main'");
 ensureColumn('sites', 'webhook_secret_ciphertext', "TEXT NOT NULL DEFAULT ''");
+ensureColumn('sites', 'run_as_user', "TEXT NOT NULL DEFAULT ''");
 
 run(`CREATE TABLE IF NOT EXISTS webhook_deliveries (
   id TEXT PRIMARY KEY,

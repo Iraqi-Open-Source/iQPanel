@@ -14,6 +14,7 @@ function writeApacheConfig(site, sitePath) {
     site_root: path.join(sitePath(site.slug), 'app'),
     site_path: sitePath(site.slug),
     upstream_port: Number(site.app_port || site.port || listenPort),
+    run_as_user: site.run_as_user || require('./site-user').siteUserName(site.slug),
   };
   let template = 'apache/proxy.conf.hbs';
   if (site.type === 'php') template = 'apache/php.conf.hbs';

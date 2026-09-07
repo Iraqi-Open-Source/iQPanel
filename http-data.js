@@ -1,6 +1,7 @@
 const { send, body, getSite, log, slugify, now, id, db, secrets, queue, agentClient, siteAgent, publicDatabase } = require('./http-shared');
 const metrics = require('./metrics');
 const { syncCrontab } = require('./http-cron');
+const { resolveRunAsUser } = require('./site-user');
 const { listServers } = require('./servers');
 const { probeServer } = require('./server-probe');
 const { publicSettings } = require('./http-settings');
@@ -105,7 +106,7 @@ async function handleData(request, response, pathname) {
     const site = input.site_slug ? getSite(input.site_slug) : null;
     if (input.site_slug && !site) throw new Error('Site not found');
     if (!/^(\S+\s+){4}\S+$/.test(String(input.schedule || ''))) throw new Error('Cron schedule must contain five fields');
-    const job = { id: id(), site_id: site?.id || null, run_as_user: input.run_as_user || 'www-data', schedule: input.schedule, command: input.command, enabled: input.enabled === false ? 0 : 1, created_at: now() };
+    const job = { id: id(), site_id: site?.id || null, run_as_user: resolveRunAsUser({ site, requested: input.run_as_user, escalate: Boolean(input.escalate) }), schedule: input.schedule, command: input.command, enabled: input.enabled === false ? 0 : 1, created_at: now() };
     db.run(`INSERT INTO cron_jobs (id,site_id,run_as_user,schedule,command,enabled,created_at) VALUES (${db.sql(job.id)},${db.sql(job.site_id)},${db.sql(job.run_as_user)},${db.sql(job.schedule)},${db.sql(job.command)},${job.enabled},${db.sql(job.created_at)})`);
     await syncCrontab(job.run_as_user);
     log('Cron job created', site?.name || 'server', job.command);

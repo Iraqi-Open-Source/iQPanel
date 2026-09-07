@@ -2,6 +2,7 @@ const db = require('./db');
 const queue = require('./queue');
 const agentClient = require('./agent-client');
 const { applySiteConfig } = require('./http-site-create');
+const { needsUserMigration } = require('./site-user');
 
 const now = () => new Date().toISOString();
 
@@ -58,6 +59,21 @@ const handlers = {
     log('Install commands completed', payload.site.name || payload.site.slug);
     return { output };
   },
+  async migrateSiteUsers(payload) {
+    const sites = payload.site_ids?.length
+      ? payload.site_ids.map((id) => db.rows(`SELECT * FROM sites WHERE id=${db.sql(id)}`)[0]).filter(Boolean)
+      : db.rows('SELECT * FROM sites ORDER BY created_at ASC').filter(needsUserMigration);
+    const migrated = [];
+    for (const site of sites) {
+      const result = await agentForPayload({ ...payload, site }).invoke('migrateSiteUser', site.slug);
+      db.run(`UPDATE sites SET run_as_user=${db.sql(result.run_as_user)}, updated_at=${db.sql(now())} WHERE id=${db.sql(site.id)}`);
+      const updated = { ...site, run_as_user: result.run_as_user };
+      await applySiteConfig(updated);
+      migrated.push({ slug: site.slug, run_as_user: result.run_as_user, applied: result.applied });
+    }
+    log('Site user migration completed', 'panel', `${migrated.length} sites`);
+    return { migrated };
+  },
 };
 
 let busy = false;
@@ -86,8 +102,17 @@ async function tick() {
   }
 }
 
+function enqueuePendingUserMigration() {
+  const pending = db.rows('SELECT * FROM sites').filter(needsUserMigration);
+  if (!pending.length) return null;
+  const existing = db.rows(`SELECT id FROM jobs WHERE type='migrateSiteUsers' AND status IN ('queued','running') LIMIT 1`)[0];
+  if (existing) return existing;
+  return queue.enqueue('migrateSiteUsers', { site_ids: pending.map((site) => site.id), server_id: 'local' });
+}
+
 function start(intervalMs = 250) {
+  enqueuePendingUserMigration();
   return setInterval(() => { tick().catch(() => {}); }, intervalMs);
 }
 
-module.exports = { tick, start, handlers };
+module.exports = { tick, start, handlers, enqueuePendingUserMigration };

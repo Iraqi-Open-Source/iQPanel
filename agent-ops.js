@@ -195,16 +195,23 @@ function renderCrontab(existing, jobs) {
 
 async function writeCrontab(user, jobs) {
   assertCronUser(user);
+  const directory = path.join(paths.generatedRoot(), "cron");
+  fs.mkdirSync(directory, { recursive: true });
   let existing = "";
-  try {
-    const listed = await agent.command("crontab", ["-u", user, "-l"]);
-    existing = listed.stdout || "";
-  } catch {
-    existing = "";
+  if (paths.applySystem) {
+    try {
+      const listed = await agent.command("crontab", ["-u", user, "-l"]);
+      existing = listed.stdout || "";
+    } catch {
+      existing = "";
+    }
   }
   const merged = renderCrontab(existing, jobs);
+  const filePath = path.join(directory, `${user}.cron`);
+  fs.writeFileSync(filePath, merged, { mode: 0o600 });
+  if (!paths.applySystem) return { user, jobs: (jobs || []).length, applied: false, path: filePath };
   await agent.command("crontab", ["-u", user, "-"], { input: merged });
-  return { user, jobs: (jobs || []).length };
+  return { user, jobs: (jobs || []).length, applied: true, path: filePath };
 }
 
 function ping() {

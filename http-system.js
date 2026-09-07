@@ -1,10 +1,12 @@
-const { send, body, log, db, secrets, agentClient } = require('./http-shared');
+const { send, body, log, db, secrets, agentClient, queue } = require('./http-shared');
+const { needsUserMigration } = require('./site-user');
 
 const FEATURE_CATALOG = {
   file_manager: { status: 'available', api: '/api/sites/:slug/files' },
   wordpress: { status: 'available', api: '/api/sites/:slug/wordpress' },
   alerts: { status: 'configurable', api: '/api/settings' },
   two_factor: { status: 'planned', api: null },
+  os_users: { status: 'available', api: '/api/system/migrate-site-users' },
   openlitespeed: { status: 'planned', api: null },
   cloudflare: { status: 'planned', api: null },
   mail_server: { status: 'planned', api: null },
@@ -37,6 +39,16 @@ async function handleSystem(request, response, pathname) {
     if (input.discord_webhook) db.run(`INSERT INTO settings(key,value) VALUES ('discord_webhook',${db.sql(secrets.encrypt(input.discord_webhook))}) ON CONFLICT(key) DO UPDATE SET value=excluded.value`);
     log('Alert settings updated', 'panel');
     send(response, 200, { ok: true });
+    return true;
+  }
+  if (request.method === 'POST' && pathname === '/api/system/migrate-site-users') {
+    const pending = db.rows('SELECT * FROM sites ORDER BY created_at ASC').filter(needsUserMigration);
+    const job = queue.enqueue('migrateSiteUsers', {
+      site_ids: pending.map((site) => site.id),
+      server_id: 'local',
+    });
+    log('Site user migration queued', 'panel', `${pending.length} sites`);
+    send(response, 202, { status: 'queued', job_id: job.id, pending: pending.length });
     return true;
   }
   return false;

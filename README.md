@@ -38,15 +38,15 @@ Then open `http://127.0.0.1:4173` and sign in with the one-time password printed
 
 ## Features
 
-- Sites CRUD with Nginx or Apache vhosts, per-site deploy keys, and Git clone/pull jobs
+- Sites CRUD with Nginx or Apache vhosts, per-site Unix users (`iqpanel-<slug>`), deploy keys, and Git clone/pull jobs
 - PHP, Node, Python, static, and Docker Compose site types
 - Selectable PHP/Node runtime versions (`PANEL_PHP_VERSIONS`, `PANEL_NODE_VERSIONS`)
 - MySQL, MariaDB, and PostgreSQL create/attach with honest provisioning status
 - Local backups plus FTP and Telegram destinations (Telegram splits at 50MB)
 - Certbot and UFW actions generated locally, applied on the server when `PANEL_APPLY_SYSTEM=1`
 - Docker engine status, container actions, and compose up/down/build/pull
-- Web terminal with audited session start/end
-- Cron jobs, systemd templates (Laravel queue, FastAPI, Node, ASP.NET)
+- Web terminal scoped to the site user by default (escalate for admin sessions)
+- Cron jobs default to the site Unix user; systemd templates (Laravel queue, FastAPI, Node, ASP.NET)
 - Multi-server registry (local agent plus remote host/token records)
 - Optional admin login with rate limiting (`PANEL_ADMIN_PASSWORD_HASH`)
 - Secure per-site file manager API for listing, reading, writing, creating, renaming, and deleting files under the site app root

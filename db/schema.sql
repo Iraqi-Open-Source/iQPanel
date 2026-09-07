@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS sites (
   webserver TEXT NOT NULL DEFAULT 'nginx',
   ssl_status TEXT NOT NULL DEFAULT 'none',
   runtime_version TEXT,
+  run_as_user TEXT NOT NULL DEFAULT '',
   status TEXT NOT NULL DEFAULT 'online',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL

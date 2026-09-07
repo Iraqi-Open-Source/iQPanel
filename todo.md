@@ -92,12 +92,12 @@ Depends on: 3A (for remote-server deploys).
 
 Can run in parallel with 3A/3B.
 
-- [ ] Agent provisions `iqpanel-<slug>` user on site create
-- [ ] Nginx/Apache, PHP-FPM, and systemd units use site user
-- [ ] Cron and terminal scoped to site user by default
-- [ ] Site delete removes Unix user when unshared
-- [ ] Migration job for existing `www-data`-owned sites
-- [ ] Tests: cross-site filesystem isolation
+- [x] Agent provisions `iqpanel-<slug>` user on site create
+- [x] Nginx/Apache, PHP-FPM, and systemd units use site user
+- [x] Cron and terminal scoped to site user by default
+- [x] Site delete removes Unix user when unshared
+- [x] Migration job for existing `www-data`-owned sites
+- [x] Tests: cross-site filesystem isolation
 
 ## Phase 3D — Team auth, 2FA, and audit UI
 

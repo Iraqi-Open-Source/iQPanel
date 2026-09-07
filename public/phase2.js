@@ -43,7 +43,7 @@
     const terminalView = document.getElementById('terminal-view');
     if (terminalView && !document.getElementById('terminal-output')) {
       terminalView.classList.remove('placeholder-view');
-      terminalView.innerHTML = '<div class="page-heading"><div><p class="eyebrow">SYSTEM / TERMINAL</p><h1>Web terminal<span class="heading-period">.</span></h1></div><button class="secondary-button" type="button" id="terminal-start">Start session</button></div><pre class="logs-output" id="terminal-output"></pre><form id="terminal-form"><input id="terminal-input" autocomplete="off" /><button class="primary-button" type="submit">Send</button></form>';
+      terminalView.innerHTML = '<div class="page-heading"><div><p class="eyebrow">SYSTEM / TERMINAL</p><h1>Web terminal<span class="heading-period">.</span></h1></div><label class="terminal-site">Site<select id="terminal-site"><option value="">Admin session</option></select></label><label class="cron-enabled-row"><input type="checkbox" id="terminal-escalate" /> Escalate</label><button class="secondary-button" type="button" id="terminal-start">Start session</button></div><pre class="logs-output" id="terminal-output"></pre><form id="terminal-form"><input id="terminal-input" autocomplete="off" /><button class="primary-button" type="submit">Send</button></form>';
     }
 
     document.getElementById('create-service-button')?.addEventListener('click', async (event) => {
@@ -64,7 +64,25 @@
     let sessionId = '';
     let stream = null;
     document.getElementById('terminal-start')?.addEventListener('click', async () => {
-      const session = await jsonFetch('/api/terminal', { method: 'POST', body: '{}' });
+      const siteSelect = document.getElementById('terminal-site');
+      if (siteSelect && siteSelect.options.length <= 1) {
+        try {
+          const sites = await jsonFetch('/api/sites');
+          for (const site of sites) {
+            const option = document.createElement('option');
+            option.value = site.slug;
+            option.textContent = `${site.name} (${site.run_as_user || 'iqpanel-' + site.slug})`;
+            siteSelect.appendChild(option);
+          }
+        } catch {}
+      }
+      const session = await jsonFetch('/api/terminal', {
+        method: 'POST',
+        body: JSON.stringify({
+          site_slug: siteSelect?.value || undefined,
+          escalate: Boolean(document.getElementById('terminal-escalate')?.checked),
+        }),
+      });
       sessionId = session.id;
       if (stream) stream.close();
       stream = new EventSource(`/api/terminal/${session.id}/stream`);

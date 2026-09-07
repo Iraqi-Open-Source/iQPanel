@@ -101,6 +101,21 @@ ensureColumn('backups', 'details', "TEXT NOT NULL DEFAULT ''");
 ensureColumn('sites', 'deploy_branch', "TEXT NOT NULL DEFAULT 'main'");
 ensureColumn('sites', 'webhook_secret_ciphertext', "TEXT NOT NULL DEFAULT ''");
 ensureColumn('sites', 'run_as_user', "TEXT NOT NULL DEFAULT ''");
+ensureColumn('activity_log', 'user_id', 'TEXT');
+
+run(`CREATE TABLE IF NOT EXISTS users (
+  id TEXT PRIMARY KEY,
+  email TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  role TEXT NOT NULL CHECK(role IN ('owner', 'admin', 'operator', 'readonly')),
+  password_hash TEXT NOT NULL,
+  totp_secret_ciphertext TEXT NOT NULL DEFAULT '',
+  totp_enabled INTEGER NOT NULL DEFAULT 0,
+  backup_codes_ciphertext TEXT NOT NULL DEFAULT '',
+  failed_2fa INTEGER NOT NULL DEFAULT 0,
+  locked_until TEXT,
+  created_at TEXT NOT NULL
+)`);
 
 run(`CREATE TABLE IF NOT EXISTS webhook_deliveries (
   id TEXT PRIMARY KEY,

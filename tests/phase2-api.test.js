@@ -178,7 +178,7 @@ test('feature catalog and secure site file manager are available', async () => {
   const features = await (await fetch(`${base}/api/system/features`)).json();
   assert.equal(features.file_manager.status, 'available');
   assert.equal(features.wordpress.status, 'available');
-  assert.equal(features.two_factor.status, 'planned');
+  assert.equal(features.two_factor.status, 'available');
 
   const write = await fetch(`${base}/api/sites/apache-app/files`, {
     method: 'POST',

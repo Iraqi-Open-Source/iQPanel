@@ -48,7 +48,7 @@ Then open `http://127.0.0.1:4173` and sign in with the one-time password printed
 - Web terminal scoped to the site user by default (escalate for admin sessions)
 - Cron jobs default to the site Unix user; systemd templates (Laravel queue, FastAPI, Node, ASP.NET)
 - Multi-server registry (local agent plus remote host/token records)
-- Optional admin login with rate limiting (`PANEL_ADMIN_PASSWORD_HASH`)
+- Optional team login with owner/admin/operator/readonly roles, TOTP 2FA, re-auth for privileged actions, and an audit log (`PANEL_ADMIN_PASSWORD_HASH` migrates to the first owner)
 - Secure per-site file manager API for listing, reading, writing, creating, renaming, and deleting files under the site app root
 - WordPress detection and allowlisted WP-CLI operations when `wp` is installed
 - Feature and host capability inventory at `/api/system/features` and `/api/system/capabilities`

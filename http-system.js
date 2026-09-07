@@ -5,7 +5,7 @@ const FEATURE_CATALOG = {
   file_manager: { status: 'available', api: '/api/sites/:slug/files' },
   wordpress: { status: 'available', api: '/api/sites/:slug/wordpress' },
   alerts: { status: 'configurable', api: '/api/settings' },
-  two_factor: { status: 'planned', api: null },
+  two_factor: { status: 'available', api: '/api/account/2fa/begin' },
   os_users: { status: 'available', api: '/api/system/migrate-site-users' },
   openlitespeed: { status: 'planned', api: null },
   cloudflare: { status: 'planned', api: null },

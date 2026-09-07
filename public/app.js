@@ -533,15 +533,21 @@
 
     $("#login-form").addEventListener("submit", async (event) => {
       event.preventDefault();
-      const password = new FormData(event.currentTarget).get("password");
+      const form = new FormData(event.currentTarget);
+      const password = form.get("password");
+      const email = form.get("email");
+      const totp = form.get("totp");
       const errorEl = $("#login-error");
       try {
-        await api("/api/login", { method: "POST", body: JSON.stringify({ password }) });
+        await api("/api/login", { method: "POST", body: JSON.stringify({ password, email: email || undefined, totp: totp || undefined }) });
         state.authenticated = true;
         errorEl.hidden = true;
         showApp();
         await refreshDashboard();
       } catch (error) {
+        if (error.body?.totp_required) {
+          $("#login-totp-label").hidden = false;
+        }
         errorEl.textContent = error.body?.error || error.message;
         errorEl.hidden = false;
       }

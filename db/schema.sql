@@ -73,6 +73,21 @@ CREATE TABLE IF NOT EXISTS activity_log (
   action TEXT NOT NULL,
   target TEXT NOT NULL,
   details TEXT NOT NULL DEFAULT '',
+  user_id TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS users (
+  id TEXT PRIMARY KEY,
+  email TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  role TEXT NOT NULL CHECK(role IN ('owner', 'admin', 'operator', 'readonly')),
+  password_hash TEXT NOT NULL,
+  totp_secret_ciphertext TEXT NOT NULL DEFAULT '',
+  totp_enabled INTEGER NOT NULL DEFAULT 0,
+  backup_codes_ciphertext TEXT NOT NULL DEFAULT '',
+  failed_2fa INTEGER NOT NULL DEFAULT 0,
+  locked_until TEXT,
   created_at TEXT NOT NULL
 );
 

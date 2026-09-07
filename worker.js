@@ -8,7 +8,7 @@ const now = () => new Date().toISOString();
 
 function log(action, target, details = '') {
   const crypto = require('node:crypto');
-  db.run(`INSERT INTO activity_log (id, action, target, details, created_at) VALUES (${db.sql(crypto.randomUUID())}, ${db.sql(action)}, ${db.sql(target)}, ${db.sql(details)}, ${db.sql(now())})`);
+    db.run(`INSERT INTO activity_log (id, action, target, details, user_id, created_at) VALUES (${db.sql(crypto.randomUUID())}, ${db.sql(action)}, ${db.sql(target)}, ${db.sql(details)}, NULL, ${db.sql(now())})`);
 }
 
 function recordBackup(siteId, result) {

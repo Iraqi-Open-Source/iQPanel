@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { AsyncLocalStorage } = require('node:async_hooks');
 const db = require('./db');
 const secrets = require('./secrets');
 const queue = require('./queue');
@@ -9,6 +10,7 @@ const agentClient = require('./agent-client');
 const publicRoot = __dirname;
 const sessions = new Map();
 const loginAttempts = new Map();
+const requestContext = new AsyncLocalStorage();
 const now = () => new Date().toISOString();
 const id = () => crypto.randomUUID();
 
@@ -36,8 +38,16 @@ function send(response, status, payload, headers = {}) {
 }
 
 function getSite(slug) { return db.rows(`SELECT * FROM sites WHERE slug=${db.sql(slug)} LIMIT 1`)[0]; }
-function log(action, target, details = '') {
-  db.run(`INSERT INTO activity_log (id, action, target, details, created_at) VALUES (${db.sql(id())}, ${db.sql(action)}, ${db.sql(target)}, ${db.sql(details)}, ${db.sql(now())})`);
+function currentUser() { return requestContext.getStore()?.user || null; }
+function currentSession() { return requestContext.getStore()?.session || null; }
+function httpError(status, message, extra = {}) {
+  const error = new Error(message);
+  error.statusCode = status;
+  error.payload = { error: message, ...extra };
+  throw error;
+}
+function log(action, target, details = '', actorId = currentUser()?.id) {
+  db.run(`INSERT INTO activity_log (id, action, target, details, user_id, created_at) VALUES (${db.sql(id())}, ${db.sql(action)}, ${db.sql(target)}, ${db.sql(details)}, ${db.sql(actorId || null)}, ${db.sql(now())})`);
 }
 function slugify(input) {
   const value = String(input || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 49);
@@ -57,4 +67,5 @@ function siteAgent(site) {
 
 module.exports = {
   body, rawBody, send, getSite, log, slugify, publicDatabase, siteAgent, sessions, loginAttempts, now, id, publicRoot, crypto, db, secrets, queue, agentClient,
+  requestContext, currentUser, currentSession, httpError,
 };

@@ -7,8 +7,10 @@ const bind = process.env.PANEL_BIND || '127.0.0.1';
 
 const server = http.createServer((request, response) => {
   handleRequest(request, response).catch((caught) => {
-    response.writeHead(400, { 'content-type': 'application/json; charset=utf-8' });
-    response.end(JSON.stringify({ error: caught.message }));
+    const status = caught.statusCode || 400;
+    const payload = caught.payload || { error: caught.message };
+    response.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
+    response.end(JSON.stringify(payload));
   });
 });
 

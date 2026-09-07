@@ -18,9 +18,11 @@
           <div><strong>iQPanel</strong><small>server control</small></div>
         </div>
         <h1>Sign in</h1>
-        <p class="login-intro">Enter your admin password to access this server.</p>
+        <p class="login-intro">Sign in with your panel account. Two-factor is required when enabled.</p>
         <form id="login-form">
+          <label>Email <span class="optional">defaults to admin</span><input name="email" autocomplete="username" placeholder="admin" /></label>
           <label>Password<input type="password" name="password" autocomplete="current-password" required /></label>
+          <label id="login-totp-label" hidden>Authentication code<input name="totp" inputmode="numeric" autocomplete="one-time-code" /></label>
           <p id="login-error" class="login-error" hidden></p>
           <button class="primary-button login-submit" type="submit">Sign in <span>→</span></button>
         </form>
@@ -50,6 +52,7 @@
           <button class="nav-item" type="button" data-view="cron"><span class="nav-icon">◷</span>Cron</button>
           <div class="nav-label">System</div>
           <button class="nav-item" type="button" data-view="terminal"><span class="nav-icon">&gt;_</span>Terminal</button>
+          <button class="nav-item" type="button" data-view="audit"><span class="nav-icon">◉</span>Audit</button>
           <button class="nav-item" type="button" data-view="settings"><span class="nav-icon">⚙</span>Settings</button>
         </nav>
         <div class="sidebar-footer">
@@ -170,6 +173,22 @@
             </div>
           </section>
 
+          <section class="view" id="audit-view">
+            <div class="page-heading">
+              <div>
+                <p class="eyebrow">SYSTEM / AUDIT</p>
+                <h1>Audit log<span class="heading-period">.</span></h1>
+                <p class="subheading">Privileged actions with actor and timestamp.</p>
+              </div>
+            </div>
+            <form id="audit-filter" class="form-row">
+              <label>Action<input name="action" placeholder="Site deleted" /></label>
+              <label>Target<input name="target" placeholder="site name" /></label>
+              <button class="secondary-button" type="submit">Filter</button>
+            </form>
+            <div class="panel"><div class="data-list" id="audit-list"></div></div>
+          </section>
+
           <section class="view" id="settings-view">
             <div class="page-heading">
               <div>
@@ -183,9 +202,26 @@
               <div class="data-row"><span>Agent status</span><strong id="settings-agent-status">—</strong></div>
               <div class="data-row"><span>Data root</span><code id="settings-data-root">—</code></div>
               <div class="data-row"><span>Authentication</span><strong id="settings-auth">—</strong></div>
+              <div class="data-row"><span>Signed in as</span><strong id="settings-user">—</strong></div>
               <div class="settings-actions">
+                <button class="secondary-button" type="button" id="settings-2fa">Set up two-factor</button>
                 <button class="secondary-button" type="button" id="settings-logout">Sign out</button>
               </div>
+            </div>
+            <div class="settings-panel panel" id="team-panel">
+              <div class="panel-heading"><div><h2>Team members</h2><p>Owners and admins can invite operators and read-only users.</p></div></div>
+              <div class="data-list" id="team-list"></div>
+              <form id="team-form">
+                <div class="form-row">
+                  <label>Email<input name="email" required placeholder="ops@example.com" /></label>
+                  <label>Name<input name="name" placeholder="Operator" /></label>
+                </div>
+                <div class="form-row">
+                  <label>Role<select name="role"><option value="operator">Operator</option><option value="readonly">Read-only</option><option value="admin">Admin</option><option value="owner">Owner</option></select></label>
+                  <label>Password<input name="password" type="password" minlength="8" placeholder="Generated if empty" /></label>
+                </div>
+                <div class="modal-actions"><button class="primary-button" type="submit">Add member</button></div>
+              </form>
             </div>
           </section>
 
@@ -233,6 +269,20 @@
       </div>
     </div>
 
+    <div class="modal-backdrop" id="reauth-modal" role="dialog" aria-modal="true" hidden>
+      <div class="modal">
+        <button class="modal-close icon-button" type="button" data-close-modal aria-label="Close dialog">×</button>
+        <p class="eyebrow">SECURITY / RE-AUTH</p>
+        <h2>Confirm your password</h2>
+        <p class="modal-intro">This action is privileged. Re-enter your password to continue.</p>
+        <form id="reauth-form">
+          <label>Password<input type="password" name="password" required autocomplete="current-password" /></label>
+          <label>Authentication code <span class="optional">if 2FA is on</span><input name="totp" inputmode="numeric" autocomplete="one-time-code" /></label>
+          <p id="reauth-error" class="login-error" hidden></p>
+          <div class="modal-actions"><button type="button" class="secondary-button" data-close-modal>Cancel</button><button class="primary-button" type="submit">Confirm</button></div>
+        </form>
+      </div>
+    </div>
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script src="/app.js"></script>
   </body>

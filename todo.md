@@ -103,13 +103,13 @@ Can run in parallel with 3A/3B.
 
 Can run in parallel with 3A–3C. Required before public exposure.
 
-- [ ] `users` table with `owner` / `admin` / `operator` / `readonly` roles
-- [ ] TOTP 2FA enrollment, backup codes, verify-on-login
-- [ ] Re-auth before terminal, site delete, and root-capable actions
-- [ ] `GET /api/audit` with pagination and filters
-- [ ] Dashboard audit log view and team member settings
-- [ ] Migrate single admin password to first `owner` on upgrade
-- [ ] Tests: role enforcement, 2FA lockout, audit coverage
+- [x] `users` table with `owner` / `admin` / `operator` / `readonly` roles
+- [x] TOTP 2FA enrollment, backup codes, verify-on-login
+- [x] Re-auth before terminal, site delete, and root-capable actions
+- [x] `GET /api/audit` with pagination and filters
+- [x] Dashboard audit log view and team member settings
+- [x] Migrate single admin password to first `owner` on upgrade
+- [x] Tests: role enforcement, 2FA lockout, audit coverage
 
 ## Phase 3E — Host integrations (Agent + installer)
 

@@ -5,6 +5,7 @@ import { cn } from '../../lib/utils.js';
 
 export const Dialog = RadixDialog.Root;
 export const DialogTrigger = RadixDialog.Trigger;
+export const DialogDescription = RadixDialog.Description;
 
 export function DialogContent({ className, children, title, ...props }) {
   return (

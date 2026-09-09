@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { api, subscribeSSE } from '../lib/api.js';
+import { postSSE, sseMessage } from '../lib/api.js';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
 import Input from '../components/ui/Input.jsx';
@@ -14,17 +14,21 @@ export default function PackagesPage() {
   const [output, setOutput] = useState('');
   const [loading, setLoading] = useState(false);
 
-  function install(pkg) {
+  async function install(pkg) {
     const p = pkg || name;
     if (!p) return;
     setLoading(true); setOutput('');
-    const cleanup = subscribeSSE('/api/packages/install', {
-      stdout: (d) => setOutput((o) => o + d.line),
-      stderr: (d) => setOutput((o) => o + d.line),
-      done:   () => { cleanup(); setLoading(false); },
-      error:  (d) => { setOutput((o) => o + `Error: ${d.message}`); cleanup(); setLoading(false); },
-    });
-    api.post('/api/packages/install', { name: p }).catch(() => {});
+    try {
+      await postSSE('/api/packages/install', { name: p }, {
+        stdout: (d) => setOutput((o) => o + (d.line ?? '')),
+        stderr: (d) => setOutput((o) => o + (d.line ?? '')),
+        error:  (d) => setOutput((o) => o + `Error: ${sseMessage(d)}`),
+      });
+    } catch (e) {
+      setOutput((o) => o + `Error: ${e.message}`);
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (

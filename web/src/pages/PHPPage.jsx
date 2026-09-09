@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, subscribeSSE } from '../lib/api.js';
+import { api, postSSE, sseMessage } from '../lib/api.js';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
 import Badge from '../components/ui/Badge.jsx';
@@ -17,15 +17,20 @@ export default function PHPPage() {
   const [output, setOutput] = useState('');
   const [loading, setLoading] = useState(null);
 
-  function install(v) {
+  async function install(v) {
     setLoading(v); setOutput('');
-    const cleanup = subscribeSSE('/api/php/install', {
-      stdout: (d) => setOutput((o) => o + d.line),
-      stderr: (d) => setOutput((o) => o + d.line),
-      done:   () => { cleanup(); setLoading(null); qc.invalidateQueries(['php-versions']); },
-      error:  (d) => { setOutput((o) => o + `Error: ${d.message}`); cleanup(); setLoading(null); },
-    });
-    api.post('/api/php/install', { version: v }).catch(() => {});
+    try {
+      await postSSE('/api/php/install', { version: v }, {
+        stdout: (d) => setOutput((o) => o + (d.line ?? '')),
+        stderr: (d) => setOutput((o) => o + (d.line ?? '')),
+        done:   () => { qc.invalidateQueries(['php-versions']); },
+        error:  (d) => setOutput((o) => o + `Error: ${sseMessage(d)}`),
+      });
+    } catch (e) {
+      setOutput((o) => o + `Error: ${e.message}`);
+    } finally {
+      setLoading(null);
+    }
   }
 
   return (

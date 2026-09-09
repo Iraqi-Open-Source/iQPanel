@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, subscribeSSE } from '../lib/api.js';
+import { api, postSSE, sseMessage } from '../lib/api.js';
+import ReauthDialog from '../components/ReauthDialog.jsx';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
 import Badge from '../components/ui/Badge.jsx';
@@ -198,24 +199,30 @@ function CommandsTab({ site }) {
   const [cmd, setCmd]       = useState('');
   const [output, setOutput] = useState('');
   const [running, setRunning] = useState(false);
+  const [reauthOpen, setReauthOpen] = useState(false);
+  const pendingCmd = useRef(null);
   const outputRef = useRef(null);
 
   async function runCmd(command) {
     if (!command) return;
-    setOutput('');
+    setOutput(`$ ${command}\n`);
     setRunning(true);
-    const cleanup = subscribeSSE(`/api/sites/${site.slug}/exec`, {
-      stdout: (d) => setOutput((o) => o + d.line),
-      stderr: (d) => setOutput((o) => o + d.line),
-      done:   () => { setRunning(false); cleanup(); },
-      error:  (d) => { setOutput((o) => o + `\nError: ${d.message}`); setRunning(false); cleanup(); },
-    });
-
-    // POST first, then SSE picks up
     try {
-      await api.post(`/api/sites/${site.slug}/exec`, { cmd: command });
+      await runSiteCommand(site.slug, command, {
+        stdout: (d) => setOutput((o) => o + (d.line ?? '')),
+        stderr: (d) => setOutput((o) => o + (d.line ?? '')),
+        done:   (d) => setOutput((o) => o + `\n[exit ${d.code ?? 0}]\n`),
+        error:  (d) => setOutput((o) => o + `\nError: ${sseMessage(d)}\n`),
+      });
     } catch (e) {
-      setOutput(`Error: ${e.message}`);
+      if (isReauthError(e)) {
+        pendingCmd.current = command;
+        setReauthOpen(true);
+        setOutput((o) => o + '\nRe-authentication required. Confirm your password to continue.\n');
+      } else {
+        setOutput((o) => o + `\nError: ${e.message}\n`);
+      }
+    } finally {
       setRunning(false);
     }
   }
@@ -226,21 +233,26 @@ function CommandsTab({ site }) {
 
   return (
     <div className="space-y-4">
-      {/* Shortcuts */}
       {site.type === 'laravel' && (
         <Card>
           <CardHeader><CardTitle className="text-base">Quick shortcuts</CardTitle></CardHeader>
           <CardContent>
             <div className="flex flex-wrap gap-2">
               {SHORTCUTS.map(({ label, cmd: c, destructive }) => (
-                <ShortcutButton key={c} slug={site.slug} cmd={c} label={label} destructive={destructive} />
+                <ShortcutButton
+                  key={c}
+                  slug={site.slug}
+                  cmd={c}
+                  label={label}
+                  destructive={destructive}
+                  onRun={() => runCmd(c)}
+                />
               ))}
             </div>
           </CardContent>
         </Card>
       )}
 
-      {/* Custom command */}
       <Card>
         <CardHeader><CardTitle className="text-base">Run command</CardTitle></CardHeader>
         <CardContent className="space-y-3">
@@ -264,6 +276,11 @@ function CommandsTab({ site }) {
           </pre>
         </CardContent>
       </Card>
+      <ReauthDialog
+        open={reauthOpen}
+        onOpenChange={setReauthOpen}
+        onSuccess={() => { const c = pendingCmd.current; pendingCmd.current = null; if (c) runCmd(c); }}
+      />
     </div>
   );
 }
@@ -807,12 +824,18 @@ function SSLTab({ site }) {
   async function issue() {
     if (!email) return;
     setLoading(true); setOutput('');
-    const cleanup = subscribeSSE(`/api/sites/${site.slug}/ssl/issue`, {
-      stdout: (d) => setOutput((o) => o + d.line),
-      done:   () => { cleanup(); setLoading(false); qc.invalidateQueries(['site', site.slug]); },
-      error:  (d) => { setOutput((o) => o + `Error: ${d.message}`); cleanup(); setLoading(false); },
-    });
-    await api.post(`/api/sites/${site.slug}/ssl/issue`, { email }).catch(() => {});
+    try {
+      await postSSE(`/api/sites/${site.slug}/ssl/issue`, { email }, {
+        stdout: (d) => setOutput((o) => o + (d.line ?? '')),
+        stderr: (d) => setOutput((o) => o + (d.line ?? '')),
+        done:   () => { qc.invalidateQueries(['site', site.slug]); },
+        error:  (d) => setOutput((o) => o + `Error: ${sseMessage(d)}`),
+      });
+    } catch (e) {
+      setOutput((o) => o + `Error: ${e.message}`);
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -894,35 +917,69 @@ function Row({ label, value }) {
   );
 }
 
-function ShortcutButton({ slug, cmd, label, destructive }) {
+function isReauthError(e) {
+  return e?.code === 'reauth' || e?.data?.code === 'reauth';
+}
+
+const SHORTCUT_CMDS = new Set(SHORTCUTS.map((s) => s.cmd));
+
+async function runSiteCommand(slug, command, handlers) {
+  const cmd = String(command ?? '').trim();
+  const url = SHORTCUT_CMDS.has(cmd)
+    ? `/api/sites/${slug}/shortcut`
+    : `/api/sites/${slug}/exec`;
+  await postSSE(url, { cmd }, handlers);
+}
+
+function ShortcutButton({ slug, cmd, label, destructive, onRun }) {
   const [loading, setLoading] = useState(false);
   const [result,  setResult]  = useState(null);
+  const [reauthOpen, setReauthOpen] = useState(false);
 
   async function run() {
     if (destructive && !confirm(`Run "${cmd}"? This is potentially destructive.`)) return;
+    if (onRun) {
+      setLoading(true);
+      try { await onRun(); } finally { setLoading(false); }
+      return;
+    }
     setLoading(true); setResult(null);
     try {
-      const cleanup = subscribeSSE(`/api/sites/${slug}/shortcut`, {
-        done:  (d) => { setResult({ ok: d.code === 0 }); cleanup(); setLoading(false); },
-        error: (d) => { setResult({ ok: false, msg: d.message }); cleanup(); setLoading(false); },
+      let exitCode = 0;
+      await runSiteCommand(slug, cmd, {
+        done:  (d) => { exitCode = d.code ?? 0; },
+        error: (d) => { setResult({ ok: false, msg: sseMessage(d) }); },
       });
-      await api.post(`/api/sites/${slug}/shortcut`, { cmd });
+      setResult((prev) => prev ?? { ok: exitCode === 0 });
     } catch (e) {
-      setResult({ ok: false, msg: e.message });
+      if (isReauthError(e)) {
+        setReauthOpen(true);
+        setResult({ ok: false, msg: 'Re-authentication required' });
+      } else {
+        setResult({ ok: false, msg: e.message });
+      }
+    } finally {
       setLoading(false);
     }
   }
 
   return (
-    <Button
-      size="sm"
-      variant={destructive ? 'destructive' : 'outline'}
-      loading={loading}
-      onClick={run}
-      title={cmd}
-    >
-      {result !== null && (result.ok ? <CheckCircle className="h-3 w-3 text-green-500" /> : <AlertCircle className="h-3 w-3" />)}
-      {label}
-    </Button>
+    <>
+      <Button
+        size="sm"
+        variant={destructive ? 'destructive' : 'outline'}
+        loading={loading}
+        onClick={run}
+        title={result?.msg ? `${cmd} — ${result.msg}` : cmd}
+      >
+        {result !== null && (result.ok ? <CheckCircle className="h-3 w-3 text-green-500" /> : <AlertCircle className="h-3 w-3" />)}
+        {label}
+      </Button>
+      <ReauthDialog
+        open={reauthOpen}
+        onOpenChange={setReauthOpen}
+        onSuccess={run}
+      />
+    </>
   );
 }

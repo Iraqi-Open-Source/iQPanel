@@ -6,47 +6,26 @@ import { stream, invoke } from '../../agent-client.js';
 import { requireAuth } from '../middleware.js';
 import { rbac, hasRole } from '../rbac.js';
 import { auditLog } from '../../domain/audit.js';
+import {
+  SHORTCUT_ALLOWLIST, DESTRUCTIVE_COMMANDS, normalizeCmd, commandNeedsReauth,
+} from '../command-policy.js';
 
 function uuid()   { return randomBytes(16).toString('hex'); }
 function nowIso() { return new Date().toISOString(); }
 
 const DATA_ROOT = process.env.PANEL_DATA_ROOT ?? '/var/lib/iqpanel';
-const SHORTCUT_ALLOWLIST = new Set([
-  'php artisan migrate',
-  'php artisan migrate:status',
-  'php artisan migrate:fresh',
-  'php artisan migrate:rollback',
-  'php artisan optimize:clear',
-  'php artisan config:cache',
-  'php artisan config:clear',
-  'php artisan route:cache',
-  'php artisan route:clear',
-  'php artisan view:cache',
-  'php artisan view:clear',
-  'php artisan cache:clear',
-  'php artisan storage:link',
-  'php artisan queue:restart',
-  'php artisan queue:flush',
-  'php artisan up',
-  'php artisan down',
-  'php artisan key:generate',
-  'php artisan optimize',
-  'composer install',
-  'composer install --no-dev --optimize-autoloader --no-interaction',
-  'composer update --no-dev --optimize-autoloader --no-interaction',
-  'npm run build',
-  'npm ci',
-  'npm install',
-]);
 
 export function registerExec(app) {
-  // POST /api/sites/:slug/exec  – arbitrary shell as site user (operator+ with reauth)
-  app.post('/api/sites/:slug/exec', requireAuth, rbac('operator', { reauth: true }), (req, res) => {
+  // POST /api/sites/:slug/exec  – shell as site user (operator; reauth for non-allowlisted)
+  app.post('/api/sites/:slug/exec', requireAuth, rbac('operator'), (req, res) => {
     const site = get('SELECT * FROM sites WHERE slug = ?', [req.params.slug]);
     if (!site) return res.status(404).json({ error: 'Site not found' });
 
     const { cmd } = req.body ?? {};
     if (!cmd) return res.status(400).json({ error: 'cmd required' });
+    if (commandNeedsReauth(cmd) && !req.reauthValid) {
+      return res.status(403).json({ error: 'Re-authentication required', code: 'reauth' });
+    }
 
     const runId  = uuid();
     const logDir = join(DATA_ROOT, 'cmd-logs');
@@ -59,22 +38,27 @@ export function registerExec(app) {
 
     const sse = res.sse();
     const logStream = createWriteStream(logPath, { flags: 'a' });
+    let closed = false;
+    const finish = (event, payload) => {
+      if (closed) return;
+      closed = true;
+      try { logStream.end(); } catch {}
+      sse.send(event, payload);
+      sse.close();
+    };
 
     stream('exec.run', { slug: site.slug, cmd }, (t, d) => {
       if (t === 'stdout' || t === 'stderr') {
-        sse.send(t, { line: d });
-        logStream.write(d);
+        const line = typeof d === 'string' ? d : String(d ?? '');
+        sse.send(t, { line });
+        logStream.write(line);
       } else if (t === 'result') {
-        logStream.end();
         run('UPDATE command_runs SET exit_code = ? WHERE id = ?', [d?.code ?? 0, runId]);
-        sse.send('done', { code: d?.code });
-        sse.close();
+        finish('done', { code: d?.code ?? 0 });
       } else if (t === 'error') {
-        logStream.end();
-        sse.send('error', { message: d });
-        sse.close();
+        finish('error', { message: typeof d === 'string' ? d : (d?.message ?? 'Command failed') });
       }
-    }).catch((e) => { sse.send('error', { message: e.message }); sse.close(); });
+    }).catch((e) => finish('error', { message: e.message }));
   });
 
   // POST /api/sites/:slug/shortcuts  – allowlisted artisan/composer shortcuts (readonly+)
@@ -83,15 +67,13 @@ export function registerExec(app) {
     if (!site) return res.status(404).json({ error: 'Site not found' });
 
     const { cmd } = req.body ?? {};
-    const normalized = String(cmd ?? '').trim();
+    const normalized = normalizeCmd(cmd);
 
     if (!SHORTCUT_ALLOWLIST.has(normalized)) {
       return res.status(400).json({ error: 'Command not in allowlist', cmd: normalized });
     }
 
-    // Destructive commands require operator + reauth
-    const destructive = ['php artisan migrate:fresh', 'php artisan migrate:rollback'];
-    if (destructive.includes(normalized)) {
+    if (DESTRUCTIVE_COMMANDS.has(normalized)) {
       if (!rbacCheck(req, 'operator') || !req.reauthValid) {
         return res.status(403).json({ error: 'Re-authentication required for this command', code: 'reauth' });
       }
@@ -99,12 +81,19 @@ export function registerExec(app) {
 
     auditLog(req, 'exec.shortcut', site.slug, { cmd: normalized });
     const sse = res.sse();
+    let closed = false;
+    const finish = (event, payload) => {
+      if (closed) return;
+      closed = true;
+      sse.send(event, payload);
+      sse.close();
+    };
 
     stream('exec.run', { slug: site.slug, cmd: normalized }, (t, d) => {
-      if (t === 'stdout' || t === 'stderr') sse.send(t, { line: d });
-      else if (t === 'result') { sse.send('done', { code: d?.code }); sse.close(); }
-      else if (t === 'error')  { sse.send('error', { message: d }); sse.close(); }
-    }).catch((e) => { sse.send('error', { message: e.message }); sse.close(); });
+      if (t === 'stdout' || t === 'stderr') sse.send(t, { line: typeof d === 'string' ? d : String(d ?? '') });
+      else if (t === 'result') finish('done', { code: d?.code ?? 0 });
+      else if (t === 'error')  finish('error', { message: typeof d === 'string' ? d : (d?.message ?? 'Command failed') });
+    }).catch((e) => finish('error', { message: e.message }));
   });
 
   // GET /api/sites/:slug/env

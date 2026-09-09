@@ -76,9 +76,9 @@ export const run = {
       proc.stderr.on('data', handleData('stderr'));
 
       proc.on('close', (code) => {
-        emit?.('exit', null, { code });
-        if (code === 0) resolve({ code, truncated });
-        else reject(new Error(`Command exited ${code}: ${cmd}`));
+        const exitCode = code ?? 1;
+        emit?.('exit', null, { code: exitCode });
+        resolve({ code: exitCode, truncated });
       });
 
       proc.on('error', reject);

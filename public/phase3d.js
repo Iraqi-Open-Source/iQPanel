@@ -91,6 +91,7 @@
   };
 
   const boot = () => {
+    window.iqpanelEnsureReauth = confirmReauth;
     const reauthModal = document.getElementById('reauth-modal');
     if (reauthModal) {
       new MutationObserver(() => {

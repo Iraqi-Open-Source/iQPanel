@@ -605,6 +605,14 @@
     }
   };
 
+  const ensureReauthReady = async () => {
+    const session = await fetchSession();
+    if (session.body.auth_required && session.body.authenticated && !session.body.reauth_valid) {
+      if (typeof window.iqpanelEnsureReauth !== "function") return;
+      await window.iqpanelEnsureReauth();
+    }
+  };
+
   const startSiteTerminal = async () => {
     const site = state.siteDetailData;
     const output = $("#site-terminal-output");
@@ -613,6 +621,12 @@
     stopSiteTerminal();
     output.textContent = "";
     if (note) note.textContent = "Starting session…";
+    try {
+      await ensureReauthReady();
+    } catch {
+      if (note) note.textContent = "Re-authentication cancelled — press Start session to retry.";
+      return;
+    }
     let session;
     try {
       session = await api("/api/terminal", { method: "POST", body: JSON.stringify({ site_slug: site.slug, cwd: "." }) });

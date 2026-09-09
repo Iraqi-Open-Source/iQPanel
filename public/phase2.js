@@ -76,6 +76,16 @@
       if (output) output.textContent += `\n# ${notice}\n`;
     };
     document.getElementById('terminal-start')?.addEventListener('click', async () => {
+      const output = document.getElementById('terminal-output');
+      try {
+        const sessionInfo = await jsonFetch('/api/session');
+        if (sessionInfo.auth_required && sessionInfo.authenticated && !sessionInfo.reauth_valid && typeof window.iqpanelEnsureReauth === 'function') {
+          await window.iqpanelEnsureReauth();
+        }
+      } catch (error) {
+        if (output) output.textContent += `\n# ${error.message}\n`;
+        return;
+      }
       const siteSelect = document.getElementById('terminal-site');
       if (siteSelect && siteSelect.options.length <= 1) {
         try {
@@ -88,7 +98,6 @@
           }
         } catch {}
       }
-      const output = document.getElementById('terminal-output');
       let session;
       try {
         session = await jsonFetch('/api/terminal', {

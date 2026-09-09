@@ -69,10 +69,17 @@ test('site hub shows environment tab for laravel sites and terminal for all', ()
 
 test('app wires the environment editor and site terminal', () => {
   const app = fs.readFileSync(path.join(publicDir, 'app.js'), 'utf8');
+  const phase2 = fs.readFileSync(path.join(publicDir, 'phase2.js'), 'utf8');
+  const phase3d = fs.readFileSync(path.join(publicDir, 'phase3d.js'), 'utf8');
   assert.match(app, /\/api\/terminal/);
   assert.match(app, /site-env-save/);
   assert.match(app, /path: "\.env"/);
   assert.match(app, /site-terminal-form/);
+  assert.match(phase3d, /iqpanelEnsureReauth/);
+  assert.match(app, /iqpanelEnsureReauth/);
+  assert.match(app, /reauth_valid/);
+  assert.match(phase2, /iqpanelEnsureReauth/);
+  assert.match(phase2, /reauth_valid/);
 });
 
 test('settings exposes the self-update control', () => {

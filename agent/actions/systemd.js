@@ -1,7 +1,7 @@
 import { execFileSync, spawn } from 'node:child_process';
 import { writeFileSync, unlinkSync, existsSync } from 'node:fs';
 
-const ALLOWED_UNITS = /^(nginx|apache2|mysql|mariadb|postgresql|redis-server|docker|php\d+\.\d+-fpm|iqpanel|iqpanel-agent|iqpanel-worker|panel-[a-z0-9-]+-[a-z]+)\.service$/;
+const ALLOWED_UNITS = /^(nginx|apache2|httpd|mysql|mariadb|postgresql|redis-server|redis|docker|ufw|ssh|sshd|fail2ban|iqpanel|iqpanel-agent|iqpanel-worker|php\d+\.\d+-fpm|panel-[a-z0-9-]+-[a-z]+)\.service$|^postgresql@.+\.service$/;
 
 function assertUnit(unit) {
   if (!ALLOWED_UNITS.test(unit)) throw new Error(`Unit not allowed: ${unit}`);

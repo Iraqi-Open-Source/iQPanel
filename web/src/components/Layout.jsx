@@ -1,12 +1,15 @@
 import React, { useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth-context.jsx';
+import { api } from '../lib/api.js';
 import {
   Server, Globe, Database, Shield, Package, Clock, ScrollText,
-  Settings, Users, FileText, Terminal, Container, Code2,
+  Settings, Users, FileText, Container, Code2,
   ChevronLeft, ChevronRight, Moon, Sun, LogOut, Activity,
 } from 'lucide-react';
 import { cn } from '../lib/utils.js';
+import ServiceStatusChips from './ServiceStatus.jsx';
 
 const NAV = [
   { to: '/',          icon: Activity,    label: 'Dashboard' },
@@ -29,6 +32,11 @@ export default function Layout() {
   const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
   const [dark, setDark] = useState(() => document.documentElement.classList.contains('dark'));
+  const { data: services = [] } = useQuery({
+    queryKey: ['services'],
+    queryFn: () => api.get('/api/services'),
+    refetchInterval: 15_000,
+  });
 
   function toggleDark() {
     const next = !dark;
@@ -103,11 +111,11 @@ export default function Layout() {
       {/* Main content */}
       <main className="flex-1 overflow-y-auto">
         {/* Top bar */}
-        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-background/80 backdrop-blur px-6 py-3">
-          <div />
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <header className="sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-border bg-background/80 backdrop-blur px-6 py-3">
+          <ServiceStatusChips services={services} compact className="min-w-0 flex-1" />
+          <div className="flex shrink-0 items-center gap-2 text-sm text-muted-foreground">
             <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">{user?.role}</span>
-            <span>{user?.email}</span>
+            <span className="hidden sm:inline">{user?.email}</span>
           </div>
         </header>
         <div className="p-6">

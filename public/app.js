@@ -571,7 +571,7 @@
     }
   };
 
-  const stopSiteTerminal = () => {
+  const endSiteTerminal = (message) => {
     if (state.siteTerminalStream) {
       state.siteTerminalStream.close();
       state.siteTerminalStream = null;
@@ -582,7 +582,25 @@
       api(`/api/terminal/${encodeURIComponent(id)}`, { method: "DELETE" }).catch(() => {});
     }
     const note = $("#site-terminal-status");
-    if (note) note.textContent = "Session closed — press Start session to connect.";
+    if (note) note.textContent = message || "Session ended — press Start session to reconnect.";
+  };
+
+  const stopSiteTerminal = () => {
+    endSiteTerminal("Session closed — press Start session to connect.");
+  };
+
+  const sendSiteTerminalInput = async (data) => {
+    if (!state.siteTerminalId) return false;
+    try {
+      await api(`/api/terminal/${encodeURIComponent(state.siteTerminalId)}/input`, { method: "POST", body: JSON.stringify({ data: `${data}\n` }) });
+      return true;
+    } catch (error) {
+      if (!/closed/i.test(error.message || "")) {
+        showToast(error.message);
+        return true;
+      }
+      return false;
+    }
   };
 
   const startSiteTerminal = async () => {
@@ -605,7 +623,8 @@
       return;
     }
     state.siteTerminalId = session.id;
-    output.textContent = `# Connected to ${site.slug}/app as ${session.user || "panel user"} — type a command and press Enter.\n`;
+    if (session.restricted) output.textContent = `# Note: ${session.restricted}.\n`;
+    output.textContent += `# Connected to ${site.slug}/app as ${session.user || "panel user"} — type a command and press Enter.\n`;
     output.scrollTop = output.scrollHeight;
     if (note) note.textContent = `Session live · ${session.user || "panel user"} · ${session.cwd}`;
     const source = new EventSource(`/api/terminal/${encodeURIComponent(session.id)}/stream`);
@@ -617,19 +636,18 @@
         if (!current) return;
         current.textContent += payload.chunk || "";
         current.scrollTop = current.scrollHeight;
+        if (payload.closed) endSiteTerminal("Session ended — press Start session to reconnect.");
       } catch {
         /* ignore malformed chunks */
       }
     };
     source.onerror = () => {
-      state.siteTerminalStream = null;
-      try { source.close(); } catch {}
-      if (state.siteTerminalId) {
-        api(`/api/terminal/${encodeURIComponent(state.siteTerminalId)}`, { method: "DELETE" }).catch(() => {});
-        state.siteTerminalId = null;
+      if (source.readyState === EventSource.CONNECTING && state.siteTerminalStream === source) {
+        const waiting = $("#site-terminal-status");
+        if (waiting) waiting.textContent = "Reconnecting…";
+        return;
       }
-      const ended = $("#site-terminal-status");
-      if (ended) ended.textContent = "Session ended — press Start session to reconnect.";
+      endSiteTerminal("Session ended — press Start session to reconnect.");
     };
   };
 
@@ -1269,12 +1287,13 @@
         event.preventDefault();
         const field = $("#site-terminal-input");
         const data = field?.value ?? "";
-        if (!field || !data.trim() || !state.siteTerminalId) return;
+        if (!field || !data.trim()) return;
         field.value = "";
-        try {
-          await api(`/api/terminal/${encodeURIComponent(state.siteTerminalId)}/input`, { method: "POST", body: JSON.stringify({ data: `${data}\n` }) });
-        } catch (error) {
-          showToast(error.message);
+        let sent = await sendSiteTerminalInput(data);
+        if (!sent && !state.siteTerminalId) {
+          showToast("Session ended — starting a new session…");
+          await startSiteTerminal();
+          sent = await sendSiteTerminalInput(data);
         }
         return;
       }

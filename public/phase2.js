@@ -62,6 +62,19 @@
     }
     let sessionId = '';
     let stream = null;
+    const endSession = (message) => {
+      if (stream) {
+        stream.close();
+        stream = null;
+      }
+      if (sessionId) {
+        jsonFetch(`/api/terminal/${sessionId}`, { method: 'DELETE' }).catch(() => {});
+        sessionId = '';
+      }
+      const output = document.getElementById('terminal-output');
+      const notice = message || 'Session ended — press Start session to reconnect.';
+      if (output) output.textContent += `\n# ${notice}\n`;
+    };
     document.getElementById('terminal-start')?.addEventListener('click', async () => {
       const siteSelect = document.getElementById('terminal-site');
       if (siteSelect && siteSelect.options.length <= 1) {
@@ -75,30 +88,59 @@
           }
         } catch {}
       }
-      const session = await jsonFetch('/api/terminal', {
-        method: 'POST',
-        body: JSON.stringify({
-          site_slug: siteSelect?.value || undefined,
-          escalate: Boolean(document.getElementById('terminal-escalate')?.checked),
-        }),
-      });
+      const output = document.getElementById('terminal-output');
+      let session;
+      try {
+        session = await jsonFetch('/api/terminal', {
+          method: 'POST',
+          body: JSON.stringify({
+            site_slug: siteSelect?.value || undefined,
+            escalate: Boolean(document.getElementById('terminal-escalate')?.checked),
+          }),
+        });
+      } catch (error) {
+        if (output) output.textContent += `\n# ${error.message}\n`;
+        return;
+      }
       sessionId = session.id;
       if (stream) stream.close();
+      if (output) output.textContent = session.restricted ? `# Note: ${session.restricted}.\n` : '';
       stream = new EventSource(`/api/terminal/${session.id}/stream`);
       stream.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          const output = document.getElementById('terminal-output');
-          if (output) output.textContent += data.chunk || '';
+          const target = document.getElementById('terminal-output');
+          if (!target) return;
+          target.textContent += data.chunk || '';
+          target.scrollTop = target.scrollHeight;
+          if (data.closed) endSession('Session ended — press Start session to reconnect.');
         } catch {}
+      };
+      stream.onerror = () => {
+        if (stream && stream.readyState === EventSource.CONNECTING) return;
+        endSession('Session ended — press Start session to reconnect.');
       };
     });
     document.getElementById('terminal-form')?.addEventListener('submit', async (event) => {
       event.preventDefault();
-      if (!sessionId) return;
       const field = document.getElementById('terminal-input');
-      await jsonFetch(`/api/terminal/${sessionId}/input`, { method: 'POST', body: JSON.stringify({ data: `${field.value}\n` }) });
+      const data = field?.value ?? '';
+      if (!sessionId || !data.trim()) return;
       field.value = '';
+      const send = () => jsonFetch(`/api/terminal/${sessionId}/input`, { method: 'POST', body: JSON.stringify({ data: `${data}\n` }) });
+      try {
+        await send();
+      } catch (error) {
+        if (/closed/i.test(error.message || '')) {
+          endSession('Starting a new session…');
+          document.getElementById('terminal-start')?.click();
+          if (sessionId) {
+            try { await send(); } catch {}
+          }
+        } else {
+          endSession(error.message);
+        }
+      }
     });
   };
 

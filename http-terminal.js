@@ -52,12 +52,16 @@ async function handleTerminal(request, response, pathname) {
   if (request.method === 'GET' && match[2] === 'stream') {
     response.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' });
     let previous = '';
+    let previousClosed = false;
     const push = () => {
+      const session = terminal.get(sessionId);
       const text = terminal.read(sessionId);
-      if (text !== previous) {
+      const closed = Boolean(session?.closed);
+      if (text !== previous || closed !== previousClosed) {
         const chunk = text.startsWith(previous) ? text.slice(previous.length) : text;
         previous = text;
-        response.write(`data: ${JSON.stringify({ chunk })}\n\n`);
+        previousClosed = closed;
+        response.write(`data: ${JSON.stringify({ chunk, closed })}\n\n`);
       }
     };
     push();

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # iQPanel installer
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/Iraqi-Open-Source/iQPanel/new/installer/install.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/Iraqi-Open-Source/iQPanel/main/installer/install.sh | sudo bash
 #   curl -fsSL ...install.sh | sudo bash -s -- --expose-dashboard --dashboard-port=8080
 #   curl -fsSL ...install.sh | sudo bash -s -- --dashboard-domain=panel.example.com --email=me@example.com
 set -Eeuo pipefail
@@ -24,7 +24,7 @@ esac
 # ──────────────────────────────────────────────────
 
 PANEL_REPO="${PANEL_REPO:-Iraqi-Open-Source/iQPanel}"
-PANEL_REF="${PANEL_REF:-new}"
+PANEL_REF="${PANEL_REF:-main}"
 PANEL_CHANNEL="${PANEL_CHANNEL:-stable}"
 
 EXPOSE_DASHBOARD=0

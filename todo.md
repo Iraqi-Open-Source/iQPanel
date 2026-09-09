@@ -165,6 +165,39 @@ Depends on: Phase 3 complete.
 
 Do not mark a Phase 3 slice complete until it has API, safe privileged implementation, frontend workflow (when applicable), installer coverage (when applicable), and tests.
 
+## Phase 5 — Panel usability overhaul (complete)
+
+Goal: make the panel easier to use — real site detail view, truthful DB provisioning, engine availability surfaced everywhere.
+
+### Backend
+
+- [x] Engine detection: extend `serviceStatus` (agent-ops.js) to probe mysql, mariadb, postgresql, redis, docker, apache units; add DB client binaries to `systemCapabilities`
+- [x] `GET /api/system/engines` returning `{ engine: { installed, active } }`; include engines map in `/api/dashboard` payload
+- [x] Honest `FEATURE_CATALOG` (http-system.js) driven by host capabilities instead of hardcoded available
+- [x] Enrich `GET /api/sites/:slug` with `databases` join, `paths` (site dir, app root, deploy key, vhost, logs), runtime info
+- [x] Persist agent `createSite` result `directory` on site create
+- [x] `POST /api/databases` pre-flight: reject (400) with clear message when chosen engine is not installed/inactive; derive default engine from what is installed
+- [x] Fix MariaDB routing (mariadb socket/client) in agent-ops/ops
+- [x] `DELETE /api/databases/:id` drops the real database + user on the server (mysql/mariadb/postgres) before removing the panel row
+- [x] Pass `server_id` through DB provisioning instead of hardcoded `host: localhost`
+- [x] Remove dead legacy `POST /api/sites` branch and duplicate `applySiteConfig` in http-sites.js
+
+### Dashboard UI
+
+- [x] Dedicated site detail view on click: overview (domain, status, runtime versions, SSL, run_as_user), Paths card with copy buttons, Databases card with add-DB prefiltered to the site, deploy/git info, quick actions
+- [x] DB create modal: fetch engine availability, only offer installed engines, warn when inactive, inline field errors, copyable password field, surface `reason`
+- [x] Health panel shows all engines (mysql, mariadb, postgres, redis, docker, nginx, apache)
+- [x] UI consumes `/api/system/engines` (and features where useful)
+
+### Tests
+
+- [x] Engines endpoint + dashboard payload tests
+- [x] Enriched site detail test
+- [x] DB create rejection when provider missing; mariadb routing test
+- [x] DB delete drops real DB (agent op test)
+- [x] Site paths persistence test
+- [x] Full `npm test` green
+
 ## Manual verification (Ubuntu VM)
 
 1. Run `sudo bash installer/install.sh` on Ubuntu 20.04, 22.04, or 24.04 (minimal: panel + Agent only)

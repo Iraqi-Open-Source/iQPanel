@@ -117,6 +117,81 @@
     </article>`;
   };
 
+  const pathRow = (label, entry) => {
+    const value = typeof entry === 'string' ? entry : entry?.path;
+    if (!value) return '';
+    const exists = typeof entry === 'object' ? entry.exists : undefined;
+    const mark = exists === undefined
+      ? ''
+      : exists ? '<span class="badge badge-ok">exists</span>' : '<span class="badge">missing</span>';
+    return `<div class="data-row"><span><strong>${escapeHtml(label)}</strong><small><code>${escapeHtml(value)}</code></small></span>${mark}<button type="button" class="text-button" data-copy-path="${escapeHtml(value)}">Copy</button></div>`;
+  };
+
+  const siteDetail = (site, dbs = []) => {
+    const paths = site.paths || {};
+    const vhost = paths.vhost;
+    const pool = paths.php_pool;
+    const metaRows = [
+      ['Repository', site.repo_url || site.repo || '—'],
+      ['Domain', site.domain || '—'],
+      ['Port', site.port ?? '—'],
+      ['Web server', site.webserver || '—'],
+      ['SSL', site.ssl_status || '—'],
+      ['Runtime version', site.runtime_version || '—'],
+      ['Run as user', site.run_as_user || '—'],
+      ['Deploy branch', site.deploy_branch || '—'],
+      ['Config status', site.config_status || '—'],
+    ].map(([key, value]) => `<div class="data-row"><span>${escapeHtml(key)}</span><code>${escapeHtml(String(value ?? '—'))}</code></div>`).join('');
+
+    const pathRows = [
+      pathRow('Site root', paths.site_root),
+      pathRow('App root', paths.app_root),
+      pathRow('Deploy key', paths.deploy_key),
+      vhost ? pathRow('Vhost config (generated)', vhost.generated) : '',
+      vhost && vhost.available ? pathRow('Vhost config (available)', vhost.available) : '',
+      vhost && vhost.enabled ? pathRow('Vhost config (enabled)', vhost.enabled) : '',
+      pool && pool.generated ? pathRow('PHP-FPM pool (generated)', pool.generated) : '',
+      pool && pool.system ? pathRow('PHP-FPM pool (system)', pool.system) : '',
+      ...(paths.logs || []).map((log) => pathRow(`Log: ${log.name}`, log)),
+    ].join('');
+
+    const dbRows = (dbs || []).length
+      ? dbs.map((db) => `<div class="data-row"><span><strong>${escapeHtml(db.db_name)}</strong><small>${escapeHtml(db.engine)} · ${escapeHtml(db.db_user)} @ ${escapeHtml(db.host || 'localhost')}</small></span><span class="badge ${Number(db.granted) ? 'badge-ok' : 'badge-warn'}">${Number(db.granted) ? 'provisioned' : 'record only'}</span></div>`).join('')
+      : emptyInline('No databases attached. Create one below.');
+
+    const slug = escapeHtml(site.slug);
+    return `
+      <div class="page-heading">
+        <div>
+          <button class="text-button" type="button" data-view-link="sites">← All sites</button>
+          <p class="eyebrow">WORKSPACE / SITE</p>
+          <h1>${escapeHtml(site.name || site.slug)}<span class="heading-period">.</span></h1>
+          <p class="subheading">${escapeHtml(typeLabel(site.type))} · ${escapeHtml(site.status || 'online')} · port ${escapeHtml(String(site.port ?? '—'))}</p>
+        </div>
+        <div class="site-card-actions">
+          ${button({ variant: 'secondary', text: 'Deploy', 'data-site-action': 'deploy', 'data-slug': site.slug })}
+          ${button({ variant: 'secondary', text: 'Backup', 'data-site-action': 'backup', 'data-slug': site.slug })}
+          ${button({ variant: 'secondary', text: 'Apply config', 'data-site-action': 'config', 'data-slug': site.slug })}
+          ${button({ variant: 'secondary', text: 'Delete', 'data-site-action': 'delete', 'data-slug': site.slug })}
+          ${button({ variant: 'primary', text: '+ Database', 'data-open-modal': 'database-modal' })}
+        </div>
+      </div>
+      <div class="content-grid">
+        <section class="panel">
+          <div class="panel-heading"><div><h2>Site overview</h2><p>Identity, runtime, and routing.</p></div></div>
+          ${metaRows}
+        </section>
+        <section class="panel">
+          <div class="panel-heading"><div><h2>Paths on the server</h2><p>Where this site, its config, and its logs live.</p></div></div>
+          ${pathRows || emptyInline('Path information is unavailable for this site.')}
+        </section>
+      </div>
+      <section class="panel">
+        <div class="panel-heading"><div><h2>Databases</h2><p>Databases attached to this site.</p></div></div>
+        <div class="data-list">${dbRows}</div>
+      </section>`;
+  };
+
   const theme = {
     storageKey: 'iqpanel-theme',
     get() {
@@ -154,6 +229,8 @@
     siteLogo,
     siteRow,
     siteCard,
+    siteDetail,
+    pathRow,
     statusPill,
     typeLabel,
     theme,

@@ -44,6 +44,24 @@ test('dashboard API starts with an empty persistent store', async () => {
   assert.equal(typeof dashboard.server.cpu, 'number');
 });
 
+test('system engines endpoint reports availability honestly', async () => {
+  const response = await fetch(`${base}/api/system/engines`);
+  assert.equal(response.status, 200);
+  const { engines } = await response.json();
+  for (const engine of ['mysql', 'mariadb', 'postgres', 'redis']) {
+    assert.ok(engines[engine], `missing ${engine}`);
+    assert.equal(typeof engines[engine].installed, 'boolean');
+    assert.equal(typeof engines[engine].active, 'boolean');
+  }
+  assert.equal(engines.mysql.unit, 'mysql.service');
+});
+
+test('dashboard payload includes engine availability', async () => {
+  const dashboard = await (await fetch(`${base}/api/dashboard`)).json();
+  assert.ok(dashboard.server.engines);
+  assert.equal(typeof dashboard.server.engines.mysql.installed, 'boolean');
+});
+
 test('panel update requests are queued without changing generated-only installations', async () => {
   const response = await fetch(`${base}/api/system/update`, { method: 'POST' });
   assert.equal(response.status, 202);
@@ -64,29 +82,67 @@ test('site creation persists a generated deploy key and rendered config', async 
   assert.equal(site.slug, 'demo-app');
   assert.equal(site.app_port, 9100);
   assert.match(site.deploy_key_public, /^ssh-ed25519 /);
+  assert.equal(site.directory, path.join(dataRoot, 'sites', 'demo-app'));
   assert.ok(fs.existsSync(path.join(dataRoot, 'generated', 'nginx', 'demo-app.conf')));
   assert.ok(fs.existsSync(path.join(dataRoot, 'sites', 'demo-app', '.ssh', 'id_ed25519')));
 });
 
-test('database create returns the password once and never lists secrets', async () => {
+test('site detail includes paths and database attachments', async () => {
+  const response = await fetch(`${base}/api/sites/demo-app`);
+  assert.equal(response.status, 200);
+  const site = await response.json();
+  assert.deepEqual(site.databases, []);
+  assert.equal(site.paths.app_root, path.join(dataRoot, 'sites', 'demo-app', 'app'));
+  assert.equal(site.paths.vhost.generated, path.join(dataRoot, 'generated', 'nginx', 'demo-app.conf'));
+  assert.ok(site.paths.logs.some((log) => log.name === 'laravel'));
+});
+
+test('database create rejects with a clear error when the provider is missing', async () => {
   const created = await fetch(`${base}/api/databases`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ site_slug: 'demo-app', db_name: 'demo_app', db_user: 'demo_app_user', mode: 'create' }),
   });
-  assert.equal(created.status, 201);
-  const database = await created.json();
-  assert.ok(database.password);
-  assert.equal(database.granted, false);
-  assert.equal(database.password_ciphertext, undefined);
+  assert.equal(created.status, 400);
+  const payload = await created.json();
+  assert.match(payload.error, /not installed|not running/i);
+  assert.match(payload.error, /Services/);
+});
+
+function seedDatabase() {
+  const siteId = require('node:child_process').execFileSync(
+    'sqlite3',
+    [path.join(dataRoot, 'panel.sqlite'), "SELECT id FROM sites WHERE slug='demo-app'"],
+    { encoding: 'utf8' },
+  ).trim();
+  require('node:child_process').execFileSync(
+    'sqlite3',
+    [path.join(dataRoot, 'panel.sqlite'), `INSERT INTO databases (id,site_id,engine,db_name,db_user,host,password_ciphertext,granted,created_at) VALUES ('db-seed-1','${siteId}','mysql','demo_app','demo_app_user','localhost','','0','2026-01-01T00:00:00.000Z')`],
+  );
+}
+
+test('database listing never leaks secrets', async () => {
+  seedDatabase();
   const listed = await (await fetch(`${base}/api/databases`)).json();
-  assert.equal(listed[0].password, undefined);
-  assert.equal(listed[0].password_ciphertext, undefined);
-  const sql = fs.readFileSync(path.join(dataRoot, 'generated', 'mysql', 'demo_app.sql'), 'utf8');
-  assert.match(sql, /GRANT ALL PRIVILEGES/);
+  const seeded = listed.find((row) => row.id === 'db-seed-1');
+  assert.ok(seeded);
+  assert.equal(seeded.password, undefined);
+  assert.equal(seeded.password_ciphertext, undefined);
+});
+
+test('database delete without a provider requires force and keeps the row', async () => {
+  const blocked = await fetch(`${base}/api/databases/db-seed-1`, { method: 'DELETE' });
+  assert.equal(blocked.status, 400);
+  const payload = await blocked.json();
+  assert.match(payload.hint, /force=1/);
+  const forced = await fetch(`${base}/api/databases/db-seed-1?force=1`, { method: 'DELETE' });
+  assert.equal(forced.status, 204);
+  const listed = await (await fetch(`${base}/api/databases`)).json();
+  assert.equal(listed.find((row) => row.id === 'db-seed-1'), undefined);
 });
 
 test('on-demand MySQL dump fails without a live socket', async () => {
+  seedDatabase();
   const databases = await (await fetch(`${base}/api/databases`)).json();
   const response = await fetch(`${base}/api/databases/${databases[0].id}/dump`, { method: 'POST' });
   assert.equal(response.status, 202);

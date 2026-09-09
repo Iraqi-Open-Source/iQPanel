@@ -60,4 +60,18 @@ async function dumpPostgres(database, destinationDir, command) {
   return { path: archivePath, size: fs.statSync(archivePath).size };
 }
 
-module.exports = { postgresIdent, postgresSocket, provisionPostgres, dumpPostgres };
+async function destroyPostgres({ db_name, db_user }, command) {
+  const databaseName = postgresIdent(db_name);
+  const databaseUser = postgresIdent(db_user);
+  const socket = postgresSocket();
+  if (!socket) return { dropped: false, reason: 'PostgreSQL socket unavailable - the database was not dropped' };
+  const sql = `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='${databaseName}' AND pid<>pg_backend_pid();\nDROP DATABASE IF EXISTS ${databaseName};\nDROP USER IF EXISTS ${databaseUser};\n`;
+  try {
+    await command('psql', ['-h', path.dirname(socket), '-p', '5432', '-U', 'postgres', '-d', 'postgres'], { input: sql });
+  } catch (error) {
+    throw new Error(error.message || 'PostgreSQL drop failed');
+  }
+  return { dropped: true };
+}
+
+module.exports = { postgresIdent, postgresSocket, provisionPostgres, dumpPostgres, destroyPostgres };

@@ -1,10 +1,26 @@
-const { send, body, getSite, log, slugify, now, id, db, secrets, queue, agentClient, siteAgent, publicDatabase } = require('./http-shared');
+const { send, body, getSite, log, slugify, now, id, db, secrets, queue, agentClient, siteAgent, publicDatabase, httpError } = require('./http-shared');
 const metrics = require('./metrics');
 const { syncCrontab } = require('./http-cron');
 const { resolveRunAsUser } = require('./site-user');
 const { listServers } = require('./servers');
 const { probeServer } = require('./server-probe');
 const { publicSettings } = require('./http-settings');
+
+const ENGINE_LABELS = { mysql: 'MySQL', mariadb: 'MariaDB', postgres: 'PostgreSQL' };
+const DB_ENGINE_CHOICES = ['mysql', 'mariadb', 'postgres'];
+
+async function hostEngines(agent) {
+  try {
+    return await agent.invoke('engineStatus');
+  } catch {
+    return {};
+  }
+}
+
+function serverHost(serverId) {
+  if (!serverId || serverId === 'local') return 'localhost';
+  return listServers().find((server) => server.id === serverId)?.host || serverId;
+}
 
 async function agentHealth() {
   try {
@@ -31,6 +47,7 @@ async function handleData(request, response, pathname) {
     } catch {
       services = {};
     }
+    const engines = await hostEngines(agentClient.forServer(activeServerId));
     send(response, 200, {
       sites,
       activity,
@@ -49,6 +66,7 @@ async function handleData(request, response, pathname) {
         agent_mode: agentMode,
         data_root: db.root,
         services,
+        engines,
         active_server_id: activeServerId,
       },
     });
@@ -93,10 +111,24 @@ async function handleData(request, response, pathname) {
     const databaseUser = slugify(input.db_user || `${site.slug}_user`).replaceAll('-', '_');
     const secret = input.password || secrets.password();
     const mode = input.mode === 'attach' ? 'attach' : 'create';
-    const engine = ['mariadb', 'postgres', 'postgresql'].includes(input.engine) ? (input.engine === 'postgresql' ? 'postgres' : input.engine) : 'mysql';
-    const provisioned = await siteAgent(site).invoke('provisionDatabase', { db_name: databaseName, db_user: databaseUser, password: secret, mode, engine });
-    const database = { id: id(), site_id: site.id, engine, db_name: databaseName, db_user: databaseUser, host: 'localhost', granted: provisioned.granted ? 1 : 0, created_at: now() };
-    db.run(`INSERT INTO databases (id,site_id,engine,db_name,db_user,host,password_ciphertext,granted,created_at) VALUES (${db.sql(database.id)},${db.sql(database.site_id)},${db.sql(database.engine)},${db.sql(database.db_name)},${db.sql(database.db_user)},'localhost',${db.sql(secrets.encrypt(secret))},${database.granted},${db.sql(database.created_at)})`);
+    const agent = siteAgent(site);
+    const engines = await hostEngines(agent);
+    let engine = ['mariadb', 'postgres', 'postgresql'].includes(input.engine) ? (input.engine === 'postgresql' ? 'postgres' : input.engine) : null;
+    if (!engine) engine = DB_ENGINE_CHOICES.find((candidate) => engines[candidate]?.active) || 'mysql';
+    const engineInfo = engines[engine];
+    if (engineInfo && engineInfo.installed === false) {
+      httpError(400, `${ENGINE_LABELS[engine]} is not installed on this server. Install it from Services → Packages, then try again.`, { engine, engines });
+    }
+    if (engineInfo && engineInfo.installed && engineInfo.active === false) {
+      httpError(400, `${ENGINE_LABELS[engine]} is installed but not running. Start ${engineInfo.unit || 'its service'} from Services → System services.`, { engine, engines });
+    }
+    const provisioned = await agent.invoke('provisionDatabase', { db_name: databaseName, db_user: databaseUser, password: secret, mode, engine });
+    if (provisioned.granted === false) {
+      httpError(400, provisioned.reason || `${ENGINE_LABELS[engine]} provisioning did not run on this server.`, { engine, engines, granted: false, executed: Boolean(provisioned.executed) });
+    }
+    const host = serverHost(site.server_id);
+    const database = { id: id(), site_id: site.id, engine, db_name: databaseName, db_user: databaseUser, host, granted: provisioned.granted ? 1 : 0, created_at: now() };
+    db.run(`INSERT INTO databases (id,site_id,engine,db_name,db_user,host,password_ciphertext,granted,created_at) VALUES (${db.sql(database.id)},${db.sql(database.site_id)},${db.sql(database.engine)},${db.sql(database.db_name)},${db.sql(database.db_user)},${db.sql(database.host)},${db.sql(secrets.encrypt(secret))},${database.granted},${db.sql(database.created_at)})`);
     log('Database created', site.name, `${database.engine}: ${database.db_name}`);
     send(response, 201, { ...publicDatabase(database), password: secret, granted: Boolean(provisioned.granted), executed: provisioned.executed, reason: provisioned.reason || null });
     return true;
@@ -128,6 +160,22 @@ async function handleData(request, response, pathname) {
   if (databaseMatch && request.method === 'DELETE') {
     const database = db.rows(`SELECT * FROM databases WHERE id=${db.sql(databaseMatch[1])}`)[0];
     if (!database) { send(response, 404, { error: 'Database not found' }); return true; }
+    const force = new URL(request.url, 'http://localhost').searchParams.get('force') === '1';
+    const site = db.rows(`SELECT * FROM sites WHERE id=${db.sql(database.site_id)}`)[0];
+    if (!force) {
+      let result;
+      try {
+        result = await siteAgent(site).invoke('destroyDatabase', { engine: database.engine, db_name: database.db_name, db_user: database.db_user });
+      } catch (error) {
+        send(response, 400, { error: `Could not drop ${database.db_name}: ${error.message}`, hint: 'Install or start the provider, or retry with ?force=1 to remove only the panel entry.' });
+        return true;
+      }
+      if (result && result.dropped === false) {
+        send(response, 400, { error: result.reason || 'The database provider is unavailable on this server', hint: `The panel entry for ${database.db_name} was kept. Install or start the provider, or retry with ?force=1 to remove only the panel entry.` });
+        return true;
+      }
+      log('Database dropped', database.db_name, database.engine);
+    }
     db.run(`DELETE FROM databases WHERE id=${db.sql(database.id)}`);
     log('Database deleted', database.db_name);
     send(response, 204, {});

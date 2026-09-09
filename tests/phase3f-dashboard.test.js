@@ -196,7 +196,8 @@ test('wordpress API reports availability without shell injection', async () => {
 
 test('feature catalog lists Phase 3F dashboard workflows', async () => {
   const { payload } = await json(`${base}/api/system/features`);
-  for (const feature of ['file_manager', 'wordpress', 'alerts', 'service_installer', 'host_services', 'php_installer']) {
+  for (const feature of ['file_manager', 'alerts', 'service_installer', 'host_services', 'php_installer']) {
     assert.equal(payload[feature].status, 'available');
   }
+  assert.ok(['available', 'not_installed'].includes(payload.wordpress.status));
 });

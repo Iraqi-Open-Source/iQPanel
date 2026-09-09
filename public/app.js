@@ -7,6 +7,9 @@
     currentView: "overview",
     siteFilter: "all",
     pendingSiteSlug: "",
+    siteDetailSlug: "",
+    pendingDbSiteSlug: "",
+    engines: null,
     servicesSiteSlug: "",
     systemServices: [],
     logsStream: null,
@@ -151,7 +154,12 @@
 
   const renderServiceHealth = (server) => {
     const services = server?.services || {};
-    const entries = Object.entries(services);
+    const engines = server?.engines || {};
+    const engineEntries = Object.entries(engines).map(([name, info]) => [
+      name,
+      info?.installed ? (info.active ? "active" : "inactive") : "not_installed",
+    ]);
+    const entries = [...Object.entries(services), ...engineEntries];
     const container = $("#service-health");
     if (!entries.length) {
       container.innerHTML = '<p class="empty-inline">Service status unavailable.</p>';
@@ -208,6 +216,7 @@
     populateSiteSelects();
     if (state.currentView === "deployments") await loadDeployments();
     if (state.currentView === "databases") await loadDatabases();
+    if (state.currentView === "site-detail") await loadSiteDetail();
     if (state.currentView === "backups") await loadBackups();
     if (state.currentView === "services") {
       await loadServices();
@@ -229,6 +238,8 @@
   };
   window.loadDeployments = loadDeployments;
 
+  const engineLabel = (engine) => ({ mysql: "MySQL", mariadb: "MariaDB", postgres: "PostgreSQL" }[engine] || engine);
+
   const loadDatabases = async () => {
     const items = await api("/api/databases");
     state.databases = items;
@@ -237,7 +248,10 @@
       list.innerHTML = emptyRow("No databases yet.");
       return;
     }
-    list.innerHTML = items.map((db) => `<div class="data-row"><span><strong>${escapeHtml(db.db_name)}</strong><small>${escapeHtml(db.engine)} · ${escapeHtml(db.db_user)}</small></span><div class="row-actions"><button type="button" class="secondary-button" data-db-dump="${escapeHtml(db.id)}">Dump</button><button type="button" class="secondary-button" data-db-delete="${escapeHtml(db.id)}">Delete</button></div></div>`).join("");
+    list.innerHTML = items.map((db) => {
+      const granted = db.granted === 1 || db.granted === true;
+      return `<div class="data-row"><span><strong>${escapeHtml(db.db_name)}</strong><small>${escapeHtml(engineLabel(db.engine))} · ${escapeHtml(db.db_user)} @ ${escapeHtml(db.host || "localhost")}</small></span><span class="badge ${granted ? "badge-ok" : "badge-warn"}">${granted ? "provisioned" : "record only"}</span><div class="row-actions"><button type="button" class="secondary-button" data-db-dump="${escapeHtml(db.id)}">Dump</button><button type="button" class="secondary-button" data-db-delete="${escapeHtml(db.id)}">Delete</button></div></div>`;
+    }).join("");
   };
 
   const loadBackups = async () => {
@@ -289,6 +303,73 @@
       return;
     }
     list.innerHTML = items.map((svc) => `<div class="data-row"><span><strong>${escapeHtml(svc.unit_name)}</strong><small>${escapeHtml(svc.template)}</small></span><span class="badge ${svc.status === "running" ? "badge-ok" : "badge-warn"}">${escapeHtml(svc.status)}</span><div class="row-actions"><button type="button" class="secondary-button" data-svc-action="start" data-slug="${escapeHtml(slug)}" data-id="${escapeHtml(svc.id)}">Start</button><button type="button" class="secondary-button" data-svc-action="stop" data-slug="${escapeHtml(slug)}" data-id="${escapeHtml(svc.id)}">Stop</button><button type="button" class="secondary-button" data-svc-action="restart" data-slug="${escapeHtml(slug)}" data-id="${escapeHtml(svc.id)}">Restart</button><button type="button" class="secondary-button" data-svc-action="delete" data-slug="${escapeHtml(slug)}" data-id="${escapeHtml(svc.id)}">Delete</button></div></div>`).join("");
+  };
+
+  const loadEngines = async () => {
+    try {
+      const result = await api("/api/system/engines");
+      state.engines = result.engines || null;
+    } catch {
+      state.engines = state.dashboard?.server?.engines || null;
+    }
+  };
+
+  const prepareDatabaseModal = async () => {
+    const form = $("#database-form");
+    const errorEl = $("#database-form-error");
+    const result = $("#database-result");
+    if (errorEl) { errorEl.hidden = true; errorEl.textContent = ""; }
+    if (result) result.hidden = true;
+    if (form) form.hidden = false;
+    await loadEngines();
+    const select = form?.querySelector('select[name="engine"]');
+    const hint = $("#engine-availability-hint");
+    const engines = state.engines;
+    if (select && engines && Object.keys(engines).length) {
+      select.innerHTML = Object.entries(engines).map(([engine, info]) => {
+        const label = engineLabel(engine);
+        if (!info?.installed) return `<option value="${escapeHtml(engine)}" disabled>${escapeHtml(label)} — not installed</option>`;
+        if (!info.active) return `<option value="${escapeHtml(engine)}" disabled>${escapeHtml(label)} — installed but not running</option>`;
+        return `<option value="${escapeHtml(engine)}">${escapeHtml(label)}</option>`;
+      }).join("");
+      const firstActive = Object.entries(engines).find(([, info]) => info?.installed && info.active);
+      if (firstActive) select.value = firstActive[0];
+      if (hint) {
+        const unavailable = Object.entries(engines).filter(([, info]) => !info?.installed || !info.active);
+        hint.textContent = unavailable.length
+          ? "Unavailable engines can be installed or started from Services → Packages."
+          : "All database engines are available on this server.";
+      }
+    } else if (hint) {
+      hint.textContent = "Engine availability could not be checked — the server will validate on create.";
+    }
+    if (state.pendingDbSiteSlug) {
+      const siteSelect = $("#database-site-select");
+      if (siteSelect && [...siteSelect.options].some((option) => option.value === state.pendingDbSiteSlug)) {
+        siteSelect.value = state.pendingDbSiteSlug;
+      }
+      state.pendingDbSiteSlug = "";
+    }
+  };
+
+  const openSite = async (slug) => {
+    state.siteDetailSlug = slug;
+    await showView("site-detail");
+  };
+
+  const loadSiteDetail = async () => {
+    const slug = state.siteDetailSlug;
+    const body = $("#site-detail-body");
+    if (!slug || !body) return;
+    body.innerHTML = UI.emptyInline("Loading site…");
+    let site;
+    try {
+      site = await api(`/api/sites/${encodeURIComponent(slug)}`);
+    } catch (error) {
+      body.innerHTML = UI.emptyInline(error.message);
+      return;
+    }
+    body.innerHTML = UI.siteDetail(site, site.databases || []);
   };
 
   const stopLogsStream = () => {
@@ -487,6 +568,7 @@
     const modal = document.getElementById(id);
     if (!modal) return;
     if (id === "site-modal") resetSiteModal();
+    if (id === "database-modal") prepareDatabaseModal().catch(() => {});
     modal.hidden = false;
     document.body.style.overflow = "hidden";
     modal.querySelector("input,select,button")?.focus();
@@ -554,18 +636,54 @@
   const bindDataModals = () => {
     $("#database-form").addEventListener("submit", async (event) => {
       event.preventDefault();
-      const form = new FormData(event.currentTarget);
-      const payload = Object.fromEntries(form.entries());
+      const formEl = event.currentTarget;
+      const payload = Object.fromEntries(new FormData(formEl).entries());
+      const errorEl = $("#database-form-error");
+      if (errorEl) { errorEl.hidden = true; errorEl.textContent = ""; }
       try {
         const result = await api("/api/databases", { method: "POST", body: JSON.stringify(payload) });
-        closeModals();
-        showToast(`Database ${result.db_name} ready`);
-        if (result.password) showToast("Password: " + result.password);
+        formEl.hidden = true;
+        const resultPanel = $("#database-result");
+        if (resultPanel) {
+          $("#database-result-title").textContent = `Database ${result.db_name} is ready.`;
+          const creds = [
+            `name: ${result.db_name}`,
+            `user: ${result.db_user}`,
+            `host: ${result.host || "localhost"}`,
+            `engine: ${engineLabel(result.engine)}`,
+          ];
+          if (result.password) creds.push(`password: ${result.password}`);
+          const text = creds.join("\n");
+          $("#database-result-details").textContent = text;
+          $("#copy-database-credentials").dataset.copy = text;
+          resultPanel.hidden = false;
+        }
+        showToast(`Database ${result.db_name} created`);
         await refreshDashboard();
         if (state.currentView === "databases") await loadDatabases();
+        if (state.currentView === "site-detail") await loadSiteDetail();
       } catch (error) {
+        const hint = error.body?.hint ? ` (${error.body.hint})` : "";
+        if (errorEl) {
+          errorEl.textContent = error.message + hint;
+          errorEl.hidden = false;
+        }
         showToast(error.message);
       }
+    });
+
+    $("#copy-database-credentials")?.addEventListener("click", async (event) => {
+      const button = event.currentTarget;
+      try { await navigator.clipboard.writeText(button.dataset.copy || ""); } catch { /* clipboard may be unavailable */ }
+      button.textContent = "Copied";
+      setTimeout(() => { button.textContent = "Copy"; }, 1500);
+    });
+
+    $("#database-result-done")?.addEventListener("click", async () => {
+      closeModals();
+      await refreshDashboard();
+      if (state.currentView === "databases") await loadDatabases();
+      if (state.currentView === "site-detail") await loadSiteDetail();
     });
 
     $("#cron-form").addEventListener("submit", async (event) => {
@@ -593,9 +711,10 @@
     $$(".view").forEach((item) => item.classList.remove("active"));
     document.getElementById(view + "-view")?.classList.add("active");
     $$(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.view === view));
-    $("#breadcrumb").textContent = view.charAt(0).toUpperCase() + view.slice(1);
+    $("#breadcrumb").textContent = view === "site-detail" ? "Site detail" : view.charAt(0).toUpperCase() + view.slice(1);
     if (view === "deployments") await loadDeployments();
     if (view === "databases") await loadDatabases();
+    if (view === "site-detail") await loadSiteDetail();
     if (view === "backups") await loadBackups();
     if (view === "services") {
       await loadServices();
@@ -676,10 +795,48 @@
       applySiteFilter();
     });
 
+    document.getElementById("site-list")?.addEventListener("click", async (event) => {
+      const row = event.target.closest(".site-row");
+      if (row?.dataset.siteSlug) await openSite(row.dataset.siteSlug);
+    });
+
     document.getElementById("full-site-list")?.addEventListener("click", async (event) => {
       const actionBtn = event.target.closest("[data-site-action]");
+      if (actionBtn) {
+        await runSiteAction(actionBtn.dataset.siteAction, actionBtn.dataset.slug);
+        return;
+      }
+      const card = event.target.closest(".full-site-card");
+      if (card?.dataset.siteSlug) await openSite(card.dataset.siteSlug);
+    });
+
+    $("#site-detail-body")?.addEventListener("click", async (event) => {
+      const copyBtn = event.target.closest("[data-copy-path]");
+      if (copyBtn) {
+        try {
+          await navigator.clipboard.writeText(copyBtn.dataset.copyPath);
+          showToast("Path copied");
+        } catch {
+          showToast(copyBtn.dataset.copyPath);
+        }
+        return;
+      }
+      const modalBtn = event.target.closest("[data-open-modal]");
+      if (modalBtn) {
+        state.pendingDbSiteSlug = state.siteDetailSlug;
+        openModal(modalBtn.dataset.openModal);
+        return;
+      }
+      const actionBtn = event.target.closest("[data-site-action]");
       if (!actionBtn) return;
+      if (actionBtn.dataset.siteAction === "delete") {
+        await runSiteAction("delete", actionBtn.dataset.slug);
+        state.siteDetailSlug = "";
+        await showView("sites");
+        return;
+      }
       await runSiteAction(actionBtn.dataset.siteAction, actionBtn.dataset.slug);
+      await loadSiteDetail();
     });
 
     $("#services-site-select")?.addEventListener("change", async (event) => {
@@ -726,9 +883,19 @@
         return;
       }
       if (del) {
-        if (!window.confirm("Remove database record from panel?")) return;
-        await api(`/api/databases/${encodeURIComponent(del.dataset.dbDelete)}`, { method: "DELETE" });
-        showToast("Database deleted");
+        if (!window.confirm("Delete this database? This drops the database and its user on the server.")) return;
+        try {
+          await api(`/api/databases/${encodeURIComponent(del.dataset.dbDelete)}`, { method: "DELETE" });
+          showToast("Database dropped");
+        } catch (error) {
+          if (error.body?.hint && window.confirm(`${error.message}\n\nRemove the panel record anyway?`)) {
+            await api(`/api/databases/${encodeURIComponent(del.dataset.dbDelete)}?force=1`, { method: "DELETE" });
+            showToast("Database record removed");
+          } else {
+            showToast(error.message);
+            return;
+          }
+        }
         await loadDatabases();
       }
     });

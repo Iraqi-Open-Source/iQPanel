@@ -17,6 +17,22 @@ function mysqlSocket() {
   return ["/var/run/mysqld/mysqld.sock", "/run/mysqld/mysqld.sock", "/tmp/mysql.sock"].find((candidate) => fs.existsSync(candidate)) || null;
 }
 
+async function commandAvailable(program) {
+  try {
+    await agent.command("sh", ["-c", `command -v ${program}`]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function mysqlClient() {
+  for (const program of ["mysql", "mariadb"]) {
+    if (await commandAvailable(program)) return program;
+  }
+  return "mysql";
+}
+
 function createStatements(mode, databaseName, databaseUser) {
   if (mode === "attach") return "";
   return `CREATE DATABASE IF NOT EXISTS \`${databaseName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;\nCREATE USER IF NOT EXISTS '${databaseUser}'@'localhost';\n`;
@@ -41,14 +57,34 @@ async function provisionDatabase({ db_name, db_user, password, mode = "create" }
     : `CREATE DATABASE IF NOT EXISTS \`${databaseName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;\nCREATE USER IF NOT EXISTS '${databaseUser}'@'localhost' IDENTIFIED BY '${escaped}';\n${sql}`;
   const socket = mysqlSocket();
   if (!socket) {
-    return { sqlPath, executed: false, granted: false };
+    return { sqlPath, executed: false, granted: false, reason: "MySQL/MariaDB socket unavailable - is the server installed and running?" };
   }
   try {
-    await agent.command("mysql", ["--protocol=socket", `--socket=${socket}`, "-uroot"], { input: executable });
+    const executable = await mysqlClient();
+    await agent.command(executable, ["--protocol=socket", `--socket=${socket}`, "-uroot"], { input: executable });
   } catch (error) {
     throw new Error(error.message || "MySQL provisioning failed");
   }
   return { sqlPath, executed: true, granted: true };
+}
+
+async function destroyDatabase({ db_name, db_user }) {
+  const databaseName = mysqlIdent(db_name);
+  const databaseUser = mysqlIdent(db_user);
+  const sql = `DROP DATABASE IF EXISTS \`${databaseName}\`;\nDROP USER IF EXISTS '${databaseUser}'@'localhost';\n`;
+  const socket = mysqlSocket();
+  if (!socket) return { dropped: false, reason: "MySQL/MariaDB socket unavailable - the database was not dropped" };
+  const directory = path.join(root, "generated", "mysql");
+  fs.mkdirSync(directory, { recursive: true });
+  const sqlPath = path.join(directory, `${databaseName}.drop.sql`);
+  fs.writeFileSync(sqlPath, sql, { mode: 0o600 });
+  try {
+    const executable = await mysqlClient();
+    await agent.command(executable, ["--protocol=socket", `--socket=${socket}`, "-uroot"], { input: sql });
+  } catch (error) {
+    throw new Error(error.message || "MySQL drop failed");
+  }
+  return { dropped: true };
 }
 
 async function dumpDatabase(database, destinationDir, password) {
@@ -128,6 +164,27 @@ function logSources(slug) {
 
 function discoverLogs(slug) {
   return logSources(slug).map((source) => ({ ...source, exists: fs.existsSync(source.path) }));
+}
+
+function sitePaths(site = {}) {
+  const slug = site.slug;
+  agent.assertSlug(slug);
+  const base = agent.sitePath(slug);
+  const webserver = site.webserver === 'apache' ? 'apache' : site.webserver === 'nginx' ? 'nginx' : null;
+  return {
+    site_root: base,
+    app_root: path.join(base, 'app'),
+    deploy_key: path.join(base, '.ssh', 'id_ed25519'),
+    vhost: webserver === 'apache'
+      ? { generated: paths.apacheGenerated(slug), available: paths.apacheAvailable(slug), enabled: paths.apacheEnabled(slug) }
+      : webserver === 'nginx'
+        ? { generated: paths.nginxGenerated(slug), available: paths.nginxAvailable(slug), enabled: paths.nginxEnabled(slug) }
+        : null,
+    php_pool: site.type === 'php'
+      ? { generated: paths.phpPoolGenerated(slug), system: paths.phpPoolSystem(slug, site.runtime_version || paths.phpVersion) }
+      : null,
+    logs: discoverLogs(slug).map(({ name, path: logPath, exists }) => ({ name, path: logPath, exists })),
+  };
 }
 
 async function readLog(slug, name, lines = 200) {
@@ -218,29 +275,93 @@ function ping() {
   return { ok: true, ts: new Date().toISOString() };
 }
 
-async function serviceStatus() {
-  async function unitState(unit) {
-    try {
-      const result = await agent.command("systemctl", ["show", "-p", "LoadState", "-p", "ActiveState", unit]);
-      const parsed = Object.fromEntries(
-        String(result.stdout || "")
-          .split("\n")
-          .map((line) => {
-            const index = line.indexOf("=");
-            return index === -1 ? null : [line.slice(0, index), line.slice(index + 1)];
-          })
-          .filter(Boolean),
-      );
-      if (!parsed.LoadState || parsed.LoadState === "not-found") return "not_installed";
-      return parsed.ActiveState || "unknown";
-    } catch {
-      return "not_installed";
-    }
+async function unitState(unit) {
+  try {
+    const result = await agent.command("systemctl", ["show", "-p", "LoadState", "-p", "ActiveState", unit]);
+    const parsed = Object.fromEntries(
+      String(result.stdout || "")
+        .split("\n")
+        .map((line) => {
+          const index = line.indexOf("=");
+          return index === -1 ? null : [line.slice(0, index), line.slice(index + 1)];
+        })
+        .filter(Boolean),
+    );
+    if (!parsed.LoadState || parsed.LoadState === "not-found") return "not_installed";
+    return parsed.ActiveState || "unknown";
+  } catch {
+    return "not_installed";
   }
+}
+
+async function unitId(unit) {
+  try {
+    const result = await agent.command("systemctl", ["show", "-p", "Id", unit]);
+    return (String(result.stdout || "").trim().split("=")[1] || "").trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+const DB_ENGINES = {
+  mysql: { unit: "mysql.service", binaries: ["mysql"] },
+  mariadb: { unit: "mariadb.service", binaries: ["mariadb"] },
+  postgres: { unit: "postgresql.service", binaries: ["psql"] },
+  redis: { unit: "redis-server.service", binaries: ["redis-cli"] },
+};
+
+async function engineStatus() {
+  // On Ubuntu, MariaDB aliases mysql.service; distinguish them via the unit Id.
+  const mysqlUnitState = await unitState("mysql.service");
+  const mysqlUnitIsAlias = mysqlUnitState !== "not_installed" && (await unitId("mysql.service")) === "mariadb.service";
+  const mariadbUnitState = await unitState("mariadb.service");
+  const mariadbInstalled = mariadbUnitState !== "not_installed" || (await commandAvailable("mariadb"));
+  const engines = {};
+  for (const [engine, definition] of Object.entries(DB_ENGINES)) {
+    let installed = false;
+    let active = false;
+    let state = "not_installed";
+    if (engine === "mysql") {
+      if (mysqlUnitState !== "not_installed" && !mysqlUnitIsAlias) {
+        installed = true;
+        state = mysqlUnitState;
+        active = mysqlUnitState === "active";
+      }
+    } else if (engine === "mariadb") {
+      installed = mariadbInstalled;
+      state = mariadbUnitState === "not_installed" ? (mariadbInstalled ? "unknown" : "not_installed") : mariadbUnitState;
+      active = mariadbUnitState === "active";
+    } else {
+      const unitResult = await unitState(definition.unit);
+      if (unitResult !== "not_installed") {
+        installed = true;
+        state = unitResult;
+        active = unitResult === "active";
+      }
+    }
+    if (!installed) {
+      for (const binary of definition.binaries) {
+        if (await commandAvailable(binary)) {
+          installed = true;
+          break;
+        }
+      }
+    }
+    engines[engine] = { installed, active, state: installed ? state : "not_installed", unit: definition.unit };
+  }
+  return engines;
+}
+
+async function serviceStatus() {
   return {
     nginx: await unitState("nginx.service"),
+    apache: await unitState("apache2.service"),
     php_fpm: await unitState(`php${paths.phpVersion}-fpm.service`),
     mysql: await unitState("mysql.service"),
+    mariadb: await unitState("mariadb.service"),
+    postgresql: await unitState("postgresql.service"),
+    redis: await unitState("redis-server.service"),
+    docker: await unitState("docker.service"),
   };
 }
 
@@ -250,10 +371,13 @@ module.exports = {
   CRON_END,
   ping,
   serviceStatus,
+  engineStatus,
   provisionDatabase,
+  destroyDatabase,
   dumpDatabase,
   createBackup,
   discoverLogs,
+  sitePaths,
   readLog,
   writeCrontab,
   renderCrontab,

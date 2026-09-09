@@ -2,7 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const base = require('./agent-ops');
 const { createApacheHelpers } = require('./agent-apache');
-const { provisionPostgres, dumpPostgres } = require('./agent-postgres');
+const { provisionPostgres, dumpPostgres, destroyPostgres } = require('./agent-postgres');
 const { createSystemdHelpers } = require('./agent-systemd');
 const { createDockerHelpers } = require('./agent-docker');
 const net = require('./agent-net');
@@ -33,6 +33,12 @@ async function provisionDatabase(input) {
   const engine = String(input.engine || 'mysql').toLowerCase();
   if (engine === 'postgres' || engine === 'postgresql') return provisionPostgres(input, base.command);
   return base.provisionDatabase(input);
+}
+
+async function destroyDatabase(input) {
+  const engine = String(input.engine || 'mysql').toLowerCase();
+  if (engine === 'postgres' || engine === 'postgresql') return destroyPostgres(input, base.command);
+  return base.destroyDatabase(input);
 }
 
 async function dumpDatabase(database, destinationDir, secret) {
@@ -75,6 +81,7 @@ module.exports = {
   ...docker,
   ...integrationActions,
   provisionDatabase,
+  destroyDatabase,
   dumpDatabase,
   createBackup,
   requestCertificate,

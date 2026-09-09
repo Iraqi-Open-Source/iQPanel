@@ -39,14 +39,6 @@
       typeSelect.closest('.form-row')?.insertAdjacentElement('afterend', label);
     }
 
-    const engineSelect = document.querySelector('#database-form select[name="engine"]');
-    if (engineSelect && ![...engineSelect.options].some((item) => item.value === 'postgres')) {
-      const option = document.createElement('option');
-      option.value = 'postgres';
-      option.textContent = 'PostgreSQL';
-      engineSelect.appendChild(option);
-    }
-
     const terminalView = document.getElementById('terminal-view');
     if (terminalView && !document.getElementById('terminal-output')) {
       terminalView.classList.remove('placeholder-view');

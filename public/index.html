@@ -83,6 +83,8 @@
 
           <section class="view" id="sites-view"><div class="page-heading"><div><p class="eyebrow">WORKSPACE / SITES</p><h1>Your sites<span class="heading-period">.</span></h1><p class="subheading">Deploy, monitor, and manage every application from one place.</p></div><button class="primary-button" type="button" data-open-modal="site-modal"><span>+</span> New site</button></div><div class="toolbar"><div class="search-box"><span>⌕</span><input id="site-search" type="search" placeholder="Search sites..." /></div><div class="filter-tabs" id="site-filter-tabs"><button type="button" class="selected" data-filter="all">All</button><button type="button" data-filter="online">Online</button><button type="button" data-filter="attention">Needs attention</button></div></div><div id="full-site-list" class="full-site-list"></div></section>
 
+          <section class="view" id="site-detail-view"><div id="site-detail-body"></div></section>
+
           
           <section class="view" id="deployments-view">
             <div class="page-heading">
@@ -100,7 +102,7 @@
               <div>
                 <p class="eyebrow">INFRASTRUCTURE / DATABASES</p>
                 <h1>Data, under control<span class="heading-period">.</span></h1>
-                <p class="subheading">Manage MySQL databases and users per site.</p>
+                <p class="subheading">Manage MySQL, MariaDB, and PostgreSQL databases and users per site.</p>
               </div>
               <button class="primary-button" type="button" data-open-modal="database-modal"><span>+</span> Create database</button>
             </div>
@@ -282,18 +284,28 @@
         <button class="modal-close icon-button" type="button" data-close-modal aria-label="Close dialog">×</button>
         <p class="eyebrow">INFRASTRUCTURE / DATABASE</p>
         <h2 id="database-modal-title">Create database</h2>
-        <p class="modal-intro">Provision a MySQL database and user for a site.</p>
+        <p class="modal-intro">Provision a MySQL, MariaDB, or PostgreSQL database and user for a site.</p>
         <form id="database-form">
           <label>Site<select name="site_slug" id="database-site-select" required></select></label>
           <label>Database name<input name="db_name" required placeholder="my_app" /></label>
           <label>Database user <span class="optional">optional</span><input name="db_user" placeholder="Defaults to site user" /></label>
           <label>Password <span class="optional">optional</span><input name="password" type="password" autocomplete="new-password" placeholder="Generated if empty" /></label>
           <div class="form-row">
-            <label>Engine<select name="engine"><option value="mysql">MySQL</option><option value="mariadb">MariaDB</option></select></label>
+            <label>Engine<select name="engine"><option value="mysql">MySQL</option><option value="mariadb">MariaDB</option><option value="postgres">PostgreSQL</option></select></label>
             <label>Mode<select name="mode"><option value="create">Create new</option><option value="attach">Attach existing</option></select></label>
           </div>
+          <p class="subheading" id="engine-availability-hint" style="margin-top:8px"></p>
+          <p id="database-form-error" class="login-error" hidden></p>
           <div class="modal-actions"><button type="button" class="secondary-button" data-close-modal>Cancel</button><button class="primary-button" type="submit">Create <span>→</span></button></div>
         </form>
+        <div class="deploy-success" id="database-result" hidden>
+          <span class="success-mark">✓</span>
+          <p class="eyebrow">DATABASE READY</p>
+          <h2 id="database-result-title">Database created.</h2>
+          <p class="modal-intro">Store these credentials now — the password is shown only once.</p>
+          <div class="key-box"><code id="database-result-details"></code><button class="secondary-button" type="button" id="copy-database-credentials">Copy</button></div>
+          <div class="modal-actions"><button class="primary-button" type="button" id="database-result-done">Done</button></div>
+        </div>
       </div>
     </div>
 

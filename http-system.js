@@ -21,11 +21,47 @@ const FEATURE_CATALOG = {
   php_installer: { status: 'available', api: '/api/system/php/install' },
 };
 
+const FEATURE_HOST_REQUIREMENTS = {
+  wordpress: ['wp'],
+  openlitespeed: ['lsws'],
+  fail2ban: ['fail2ban-client'],
+  swap_and_disk: ['swapon', 'lsblk'],
+  disk_extension: ['lsblk', 'growpart'],
+  phpmyadmin: ['php'],
+};
+
 function setting(key) { return db.rows(`SELECT value FROM settings WHERE key=${db.sql(key)}`)[0]?.value || ''; }
+
+async function hostFeatureCatalog() {
+  let available = {};
+  try {
+    const capabilities = await agentClient.invoke('systemCapabilities');
+    available = capabilities.available || {};
+  } catch {
+    available = {};
+  }
+  const catalog = {};
+  for (const [feature, entry] of Object.entries(FEATURE_CATALOG)) {
+    const required = FEATURE_HOST_REQUIREMENTS[feature];
+    catalog[feature] = required && !required.every((command) => available[command]) ? { ...entry, status: 'not_installed' } : entry;
+  }
+  return catalog;
+}
 
 async function handleSystem(request, response, pathname) {
   if (request.method === 'GET' && pathname === '/api/system/features') {
-    send(response, 200, FEATURE_CATALOG);
+    send(response, 200, await hostFeatureCatalog());
+    return true;
+  }
+  if (request.method === 'GET' && pathname === '/api/system/engines') {
+    const { publicSettings } = require('./http-settings');
+    let engines = {};
+    try {
+      engines = await agentClient.forServer(publicSettings().active_server_id || 'local').invoke('engineStatus');
+    } catch {
+      engines = {};
+    }
+    send(response, 200, { engines });
     return true;
   }
   if (request.method === 'GET' && pathname === '/api/system/capabilities') {

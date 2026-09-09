@@ -1,41 +1,10 @@
-const { send, getSite, log, slugify, now, id, db, siteAgent } = require('./http-shared');
-const { allocatePorts } = require('./ports');
+const { send, getSite, log, now, db, siteAgent, publicDatabase } = require('./http-shared');
+const { applySiteConfig } = require('./http-site-create');
 const { queueDeploy } = require('./deployments');
-
-async function applySiteConfig(site) {
-  const agent = siteAgent(site);
-  const web = site.webserver === 'apache'
-    ? await agent.invoke('applyApacheConfig', site)
-    : await agent.invoke('applyNginxConfig', site);
-  let php = null;
-  if (site.type === 'php') php = await agent.invoke('applyPhpPool', site);
-  const status = web.applied || php?.applied ? 'applied' : 'generated';
-  db.run(`UPDATE sites SET config_status=${db.sql(status)}, updated_at=${db.sql(now())} WHERE id=${db.sql(site.id)}`);
-  return { web, php, status };
-}
 
 async function handleSites(request, response, pathname) {
   if (request.method === 'GET' && pathname === '/api/sites') {
     send(response, 200, db.rows('SELECT * FROM sites ORDER BY created_at DESC'));
-    return true;
-  }
-  if (request.method === 'POST' && pathname === '/api/sites') {
-    const input = await require('./http-shared').body(request);
-    const repo = String(input.repo || '').trim();
-    if (!/^git@[\w.-]+:[\w./-]+(?:\.git)?$/.test(repo)) throw new Error('A valid GitHub SSH URL is required');
-    if (String(input.server || input.webserver || '').toLowerCase() === 'apache') webserver = 'apache';
-    const name = String(input.name || repo.split('/').pop().replace(/\.git$/, '')).trim();
-    const slug = slugify(name);
-    if (getSite(slug)) throw new Error('A site with this name already exists');
-    const type = ['php', 'node', 'python', 'static'].includes(input.type) ? input.type : 'php';
-    const ports = allocatePorts(db.rows('SELECT port, app_port FROM sites'));
-    const created = now();
-    const site = { id: id(), name, slug, type, repo_url: repo, port: ports.port, app_port: ports.app_port, webserver: 'nginx', runtime_version: type === 'php' ? '8.3' : null, status: 'online', config_status: 'pending', created_at: created, updated_at: created };
-    const key = await siteAgent(site).invoke('createSite', slug);
-    db.run(`INSERT INTO sites (id,name,slug,type,repo_url,deploy_key_path,deploy_key_public,port,app_port,webserver,runtime_version,status,config_status,created_at,updated_at) VALUES (${db.sql(site.id)},${db.sql(site.name)},${db.sql(site.slug)},${db.sql(site.type)},${db.sql(site.repo_url)},${db.sql(key.keyPath)},${db.sql(key.publicKey)},${site.port},${site.app_port},'nginx',${db.sql(site.runtime_version)},'online','pending',${db.sql(created)},${db.sql(created)})`);
-    const applied = await applySiteConfig(site);
-    log('Site created', name, `Deploy key generated for ${slug}`);
-    send(response, 201, { ...site, config_status: applied.status, deploy_key_public: key.publicKey });
     return true;
   }
 
@@ -76,7 +45,14 @@ async function handleSites(request, response, pathname) {
   if (request.method === 'GET' && !siteMatch[2]) {
     const { deployConfig } = require('./deployments');
     const host = request.headers.host || 'localhost';
-    send(response, 200, { ...site, ...deployConfig(site, host) });
+    let paths = null;
+    try {
+      paths = await siteAgent(site).invoke('sitePaths', { slug: site.slug, type: site.type, webserver: site.webserver, runtime_version: site.runtime_version });
+    } catch {
+      paths = null;
+    }
+    const databases = db.rows(`SELECT * FROM databases WHERE site_id=${db.sql(site.id)}`).map(publicDatabase);
+    send(response, 200, { ...site, ...deployConfig(site, host), databases, paths });
     return true;
   }
   if (request.method === 'PATCH' && !siteMatch[2]) {

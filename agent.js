@@ -143,7 +143,7 @@ function wordpressStaging(slug, targetSlug) {
 }
 
 async function systemCapabilities() {
-  const commands = ['nginx', 'apache2', 'lsws', 'certbot', 'docker', 'ufw', 'fail2ban-client', 'postfix', 'dovecot', 'php', 'wp', 'swapon', 'lsblk', 'lvextend', 'growpart'];
+  const commands = ['nginx', 'apache2', 'lsws', 'certbot', 'docker', 'ufw', 'fail2ban-client', 'postfix', 'dovecot', 'php', 'wp', 'swapon', 'lsblk', 'lvextend', 'growpart', 'mysql', 'mariadb', 'psql', 'redis-cli', 'redis-server'];
   const available = {};
   for (const program of commands) {
     try { await command('sh', ['-c', `command -v ${program}`]); available[program] = true; } catch { available[program] = false; }
@@ -614,6 +614,7 @@ module.exports = {
   installSite,
   removeSite,
   sitePath,
+  assertSlug,
   listFiles,
   readSiteFile,
   writeSiteFile,

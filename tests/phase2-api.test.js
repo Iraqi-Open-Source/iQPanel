@@ -65,7 +65,7 @@ test('Apache site creation renders an Apache vhost instead of being rejected', a
   assert.ok(fs.existsSync(path.join(dataRoot, 'generated', 'apache', 'apache-app.conf')));
 });
 
-test('PostgreSQL databases are accepted and never leak ciphertext', async () => {
+test('PostgreSQL databases are rejected with a clear error when the provider is missing', async () => {
   const created = await fetch(`${base}/api/databases`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -77,15 +77,13 @@ test('PostgreSQL databases are accepted and never leak ciphertext', async () => 
       mode: 'create',
     }),
   });
-  assert.equal(created.status, 201);
-  const database = await created.json();
-  assert.equal(database.engine, 'postgres');
-  assert.ok(database.password);
-  assert.equal(database.granted, false);
+  assert.equal(created.status, 400);
+  const payload = await created.json();
+  assert.equal(payload.engine, 'postgres');
+  assert.match(payload.error, /PostgreSQL/);
+  assert.match(payload.error, /not installed|not running/i);
   const listed = await (await fetch(`${base}/api/databases`)).json();
-  const row = listed.find((item) => item.db_name === 'apache_pg');
-  assert.equal(row.password, undefined);
-  assert.equal(row.password_ciphertext, undefined);
+  assert.equal(listed.find((item) => item.db_name === 'apache_pg'), undefined);
 });
 
 test('runtimes, docker, servers, and settings endpoints are available', async () => {
@@ -175,11 +173,12 @@ test('terminal sessions echo input without extra packages', async () => {
   assert.equal(closed.status, 204);
 });
 
-test('feature catalog and secure site file manager are available', async () => {
+test('feature catalog is honest about host requirements', async () => {
   const features = await (await fetch(`${base}/api/system/features`)).json();
   assert.equal(features.file_manager.status, 'available');
-  assert.equal(features.wordpress.status, 'available');
   assert.equal(features.two_factor.status, 'available');
+  assert.ok(['available', 'not_installed'].includes(features.wordpress.status));
+  assert.ok(['available', 'configurable', 'not_installed'].includes(features.fail2ban.status));
 
   const write = await fetch(`${base}/api/sites/apache-app/files`, {
     method: 'POST',

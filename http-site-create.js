@@ -52,7 +52,8 @@ async function handleSiteCreate(request, response, pathname) {
   };
   const key = await siteAgent(site).invoke('createSite', slug);
   site.run_as_user = key.run_as_user;
-  db.run(`INSERT INTO sites (id,name,slug,type,repo_url,deploy_key_path,deploy_key_public,port,app_port,webserver,runtime_version,server_id,status,config_status,run_as_user,created_at,updated_at) VALUES (${db.sql(site.id)},${db.sql(site.name)},${db.sql(site.slug)},${db.sql(site.type)},${db.sql(site.repo_url)},${db.sql(key.keyPath)},${db.sql(key.publicKey)},${site.port},${site.app_port},${db.sql(webserver)},${db.sql(site.runtime_version)},${db.sql(server_id)},'online','pending',${db.sql(site.run_as_user)},${db.sql(created)},${db.sql(created)})`);
+  site.directory = key.directory || '';
+  db.run(`INSERT INTO sites (id,name,slug,type,repo_url,deploy_key_path,deploy_key_public,port,app_port,webserver,runtime_version,server_id,status,config_status,run_as_user,directory,created_at,updated_at) VALUES (${db.sql(site.id)},${db.sql(site.name)},${db.sql(site.slug)},${db.sql(site.type)},${db.sql(site.repo_url)},${db.sql(key.keyPath)},${db.sql(key.publicKey)},${site.port},${site.app_port},${db.sql(webserver)},${db.sql(site.runtime_version)},${db.sql(server_id)},'online','pending',${db.sql(site.run_as_user)},${db.sql(site.directory)},${db.sql(created)},${db.sql(created)})`);
   ensureWebhookSecret(site.id);
   const applied = await applySiteConfig(site);
   log('Site created', name, `Deploy key generated for ${slug}`);

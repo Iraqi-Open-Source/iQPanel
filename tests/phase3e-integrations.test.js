@@ -56,7 +56,7 @@ test('feature catalog lists every Phase 3E integration', async () => {
     'disk_extension',
   ]) {
     assert.ok(payload[feature], `missing ${feature}`);
-    assert.ok(['available', 'configurable'].includes(payload[feature].status), `${feature} status`);
+    assert.ok(['available', 'configurable', 'not_installed'].includes(payload[feature].status), `${feature} status`);
   }
 });
 

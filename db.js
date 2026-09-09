@@ -101,6 +101,7 @@ ensureColumn('backups', 'details', "TEXT NOT NULL DEFAULT ''");
 ensureColumn('sites', 'deploy_branch', "TEXT NOT NULL DEFAULT 'main'");
 ensureColumn('sites', 'webhook_secret_ciphertext', "TEXT NOT NULL DEFAULT ''");
 ensureColumn('sites', 'run_as_user', "TEXT NOT NULL DEFAULT ''");
+ensureColumn('sites', 'directory', "TEXT NOT NULL DEFAULT ''");
 ensureColumn('activity_log', 'user_id', 'TEXT');
 
 run(`CREATE TABLE IF NOT EXISTS users (

@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { unlinkSync } from 'node:fs';
 import { query, get, run } from '../../data/db.js';
 import { requireAuth } from '../middleware.js';
 import { rbac } from '../rbac.js';
@@ -30,7 +31,7 @@ export function registerBackups(app) {
     const backup = get('SELECT * FROM backups WHERE id = ?', [req.params.id]);
     if (!backup) return res.status(404).json({ error: 'Backup not found' });
     if (backup.path) {
-      try { const { unlinkSync } = await import('node:fs'); unlinkSync(backup.path); } catch {}
+      try { unlinkSync(backup.path); } catch {}
     }
     run('DELETE FROM backups WHERE id = ?', [backup.id]);
     res.json({ ok: true });

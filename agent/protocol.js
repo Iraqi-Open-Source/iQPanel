@@ -14,12 +14,24 @@
 
 import { createServer } from 'node:net';
 import { createHash, timingSafeEqual } from 'node:crypto';
-import { chmodSync } from 'node:fs';
+import { chmodSync, chownSync, unlinkSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { registry } from './registry.js';
 
 const MAX_LINE = 4 * 1024 * 1024; // 4 MB per request
 
+function applySocketPerms(socketPath) {
+  try { chmodSync(socketPath, 0o660); } catch {}
+  try {
+    const out = spawnSync('getent', ['group', 'panel'], { encoding: 'utf8' });
+    const gid = parseInt((out.stdout || '').split(':')[2], 10);
+    if (Number.isFinite(gid)) chownSync(socketPath, 0, gid);
+  } catch {}
+}
+
 export function startAgent({ socketPath, token, onReady } = {}) {
+  try { unlinkSync(socketPath); } catch { /* no stale socket */ }
+
   const server = createServer({ allowHalfOpen: false }, (socket) => {
     handleConnection(socket, token);
   });
@@ -30,7 +42,7 @@ export function startAgent({ socketPath, token, onReady } = {}) {
   });
 
   server.listen(socketPath, () => {
-    try { chmodSync(socketPath, 0o660); } catch {}
+    applySocketPerms(socketPath);
     onReady?.();
   });
 

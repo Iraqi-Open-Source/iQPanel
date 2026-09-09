@@ -18,7 +18,7 @@ try {
   }
 } catch {}
 
-import { mkdirSync, createWriteStream } from 'node:fs';
+import { mkdirSync, createWriteStream, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { query, get, run } from './data/db.js';
 import { invoke, stream } from './agent-client.js';
@@ -123,7 +123,7 @@ async function processBackup(payload) {
   }, () => {});
 
   let size = 0;
-  try { const { statSync } = await import('node:fs'); size = statSync(dest).size; } catch {}
+  try { size = statSync(dest).size; } catch {}
   run('UPDATE backups SET status = ?, path = ?, size = ? WHERE id = ?', ['done', dest, size, backup_id]);
 }
 

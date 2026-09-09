@@ -1,4 +1,4 @@
-import { stream } from '../../agent-client.js';
+import { stream, invoke } from '../../agent-client.js';
 import { requireAuth } from '../middleware.js';
 import { rbac } from '../rbac.js';
 
@@ -25,7 +25,6 @@ export function registerPackages(app) {
   });
 
   app.get('/api/packages/installed', requireAuth, async (req, res) => {
-    const { invoke } = await import('../../agent-client.js');
     try { res.json(await invoke('pkg.list_installed')); }
     catch (e) { res.status(503).json({ error: e.message }); }
   });

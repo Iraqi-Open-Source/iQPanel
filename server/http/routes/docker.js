@@ -41,6 +41,5 @@ export function registerDocker(app) {
 }
 
 async function safeInvoke(action, args) {
-  const { invoke } = await import('../../agent-client.js');
   try { return await invoke(action, args); } catch { return {}; }
 }

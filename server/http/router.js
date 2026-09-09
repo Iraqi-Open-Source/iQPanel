@@ -96,7 +96,7 @@ export class Router {
 // ──────────────────────────────────────────────────
 
 function buildPattern(route) {
-  const parts = route.split('/');
+  const parts = route.split('/').filter(Boolean);
   const keys  = [];
   const regex = parts.map((p) => {
     if (p.startsWith(':')) { keys.push(p.slice(1)); return '([^/]+)'; }

@@ -1,6 +1,7 @@
 import { invoke, stream } from '../../agent-client.js';
 import { requireAuth } from '../middleware.js';
 import { rbac } from '../rbac.js';
+import { get } from '../../data/db.js';
 
 export function registerPHP(app) {
   // GET /api/php/versions
@@ -57,7 +58,6 @@ export function registerPHP(app) {
   });
 }
 
-async function getSite(slug) {
-  const { get } = await import('../../data/db.js');
+function getSite(slug) {
   return get('SELECT * FROM sites WHERE slug = ?', [slug]);
 }

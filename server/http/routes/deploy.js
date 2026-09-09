@@ -1,5 +1,5 @@
 import { randomBytes, createHmac, timingSafeEqual } from 'node:crypto';
-import { existsSync, mkdirSync, createWriteStream } from 'node:fs';
+import { existsSync, mkdirSync, createWriteStream, readFileSync, openSync, readSync, closeSync } from 'node:fs';
 import { join } from 'node:path';
 import { query, get, run, transaction } from '../../data/db.js';
 import { stream } from '../../agent-client.js';
@@ -57,7 +57,6 @@ export function registerDeploy(app) {
     // If finished, read log from disk
     if (deploy.status === 'success' || deploy.status === 'failed') {
       try {
-        const { readFileSync } = await import('node:fs');
         const content = readFileSync(deploy.log_path, 'utf8');
         sse.send('log', { line: content });
       } catch {}
@@ -66,7 +65,6 @@ export function registerDeploy(app) {
       return;
     }
     // Live: poll log file every 500ms
-    import('node:fs').then(({ openSync, readSync, closeSync }) => {
     let pos = 0;
     const interval = setInterval(() => {
       const current = get('SELECT * FROM deployments WHERE id = ?', [deploy.id]);
@@ -85,7 +83,6 @@ export function registerDeploy(app) {
       }
     }, 500);
     res.on('close', () => clearInterval(interval));
-    }).catch(() => { sse.send('error', { message: 'Cannot open log file' }); sse.close(); });
   });
 
   // POST /api/deployments/:id/rollback

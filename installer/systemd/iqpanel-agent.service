@@ -1,6 +1,8 @@
 [Unit]
 Description=iQPanel Root Agent
 After=network.target
+StartLimitIntervalSec=30
+StartLimitBurst=10
 
 [Service]
 Type=simple
@@ -8,7 +10,6 @@ User=root
 Group=root
 WorkingDirectory=/opt/iqpanel
 EnvironmentFile=/etc/panel-agent/env
-ExecStartPre=+/bin/chown root:panel /run/iqpanel-agent.sock 2>/dev/null || true
 ExecStart=/usr/bin/node /opt/iqpanel/agent/main.js
 Restart=always
 RestartSec=3

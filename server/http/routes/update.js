@@ -1,4 +1,5 @@
 import { execFileSync, spawn } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { requireAuth } from '../middleware.js';
 import { rbac } from '../rbac.js';
 
@@ -15,7 +16,6 @@ export function registerUpdate(app) {
       if (!resp.ok) return res.json({ available: false, error: 'GitHub unreachable' });
       const data   = await resp.json();
       const latest = data.tag_name?.replace(/^v/, '');
-      const { readFileSync } = await import('node:fs');
       const current = JSON.parse(readFileSync(`${APP_DIR}/package.json`, 'utf8')).version;
       res.json({ available: latest !== current, current, latest, release_url: data.html_url });
     } catch (e) {

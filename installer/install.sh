@@ -255,10 +255,28 @@ install -m 0644 "${SOURCE_DIR}/installer/systemd/iqpanel.service"        /etc/sy
 install -m 0644 "${SOURCE_DIR}/installer/systemd/iqpanel-agent.service"   /etc/systemd/system/iqpanel-agent.service
 install -m 0644 "${SOURCE_DIR}/installer/systemd/iqpanel-worker.service"  /etc/systemd/system/iqpanel-worker.service
 systemctl daemon-reload
-systemctl enable --now iqpanel-agent.service
+systemctl reset-failed iqpanel-agent.service iqpanel-worker.service iqpanel.service 2>/dev/null || true
+rm -f /run/iqpanel-agent.sock
+
+start_unit() {
+  local unit="$1"
+  systemctl enable "$unit"
+  systemctl start "$unit"
+  sleep 0.4
+  if ! systemctl is-active --quiet "$unit"; then
+    echo "Failed to start ${unit}." >&2
+    journalctl -u "$unit" -n 40 --no-pager >&2 || true
+    return 1
+  fi
+}
+
+SERVICES_OK=1
+start_unit iqpanel-agent.service || SERVICES_OK=0
 chown -R panel:panel /var/lib/iqpanel /var/www/sites /var/log/panel /var/backups/panel
-systemctl enable --now iqpanel-worker.service
-systemctl enable --now iqpanel.service
+if [[ "${SERVICES_OK}" == "1" ]]; then
+  start_unit iqpanel-worker.service || SERVICES_OK=0
+  start_unit iqpanel.service || SERVICES_OK=0
+fi
 
 # ──────────────────────────────────────────────────
 # Optional: Nginx HTTPS proxy for dashboard domain
@@ -295,9 +313,15 @@ fi
 # ──────────────────────────────────────────────────
 
 echo ""
-echo "══════════════════════════════════════════════════"
-echo "  iQPanel installed successfully"
-echo "══════════════════════════════════════════════════"
+if [[ "${SERVICES_OK}" == "1" ]]; then
+  echo "══════════════════════════════════════════════════"
+  echo "  iQPanel installed successfully"
+  echo "══════════════════════════════════════════════════"
+else
+  echo "══════════════════════════════════════════════════"
+  echo "  iQPanel installed, but one or more services failed"
+  echo "══════════════════════════════════════════════════"
+fi
 if [[ -n "${DASHBOARD_DOMAIN}" ]]; then
   echo "  Dashboard : https://${DASHBOARD_DOMAIN}"
 elif [[ "${EXPOSE_DASHBOARD}" == "1" ]]; then
@@ -312,3 +336,4 @@ echo "  Password  : ${ADMIN_PASSWORD}"
 echo ""
 echo "  Store the password now — it will not be displayed again."
 echo "══════════════════════════════════════════════════"
+[[ "${SERVICES_OK}" == "1" ]] || exit 1

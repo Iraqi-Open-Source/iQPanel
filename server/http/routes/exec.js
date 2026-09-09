@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, createWriteStream } from 'node:fs';
 import { join } from 'node:path';
 import { get, run, query } from '../../data/db.js';
 import { stream, invoke } from '../../agent-client.js';
@@ -58,7 +58,6 @@ export function registerExec(app) {
     auditLog(req, 'exec.run', site.slug, { cmd });
 
     const sse = res.sse();
-    const { createWriteStream } = await import('node:fs');
     const logStream = createWriteStream(logPath, { flags: 'a' });
 
     stream('exec.run', { slug: site.slug, cmd }, (t, d) => {

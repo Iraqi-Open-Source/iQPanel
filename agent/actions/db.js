@@ -111,13 +111,26 @@ export const dump = {
   },
 };
 
+const SYSTEM_DATABASES = new Set([
+  'information_schema', 'mysql', 'performance_schema', 'sys', 'sys_cluster',
+  'postgres', 'template0', 'template1',
+]);
+
 export const list = {
+  validate({ engine }) {
+    if (!['mysql', 'mariadb', 'postgres'].includes(engine)) throw new Error('Invalid engine');
+  },
   async run({ engine }) {
+    let names = [];
     if (engine === 'mysql' || engine === 'mariadb') {
-      return mysqlExec('SHOW DATABASES;').split('\n').filter(Boolean);
-    } else if (engine === 'postgres') {
-      return psqlExec("SELECT datname FROM pg_database WHERE datistemplate=false;").split('\n').slice(2,-1).map(s=>s.trim()).filter(Boolean);
+      names = mysqlExec('SHOW DATABASES;').split('\n').map((s) => s.trim()).filter(Boolean);
+    } else {
+      names = execFileSync(
+        'psql',
+        ['-U', 'postgres', '-tAc', 'SELECT datname FROM pg_database WHERE datistemplate = false;'],
+        { encoding: 'utf8' },
+      ).split('\n').map((s) => s.trim()).filter(Boolean);
     }
-    return [];
+    return names.filter((n) => !SYSTEM_DATABASES.has(n));
   },
 };

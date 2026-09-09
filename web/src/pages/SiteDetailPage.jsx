@@ -365,6 +365,12 @@ function DatabasesTab({ site }) {
     queryKey: ['site-dbs', site.slug],
     queryFn:  () => api.get(`/api/sites/${site.slug}/databases`),
   });
+  const { data: engines = {} } = useQuery({
+    queryKey: ['db-engines'],
+    queryFn:  () => api.get('/api/databases/engines'),
+    staleTime: 15_000,
+  });
+  const ready = ['mysql', 'mariadb', 'postgres'].filter((id) => engines[id]?.installed && engines[id]?.active);
   const [showForm, setShowForm] = useState(false);
   const [engine, setEngine] = useState('mysql');
   const [dbName, setDbName] = useState('');
@@ -399,9 +405,10 @@ function DatabasesTab({ site }) {
               <div className="space-y-1">
                 <label className="text-xs font-medium">Engine</label>
                 <select className="h-8 w-full rounded border border-input bg-transparent text-sm px-2" value={engine} onChange={(e) => setEngine(e.target.value)}>
-                  <option value="mysql">MySQL</option>
-                  <option value="mariadb">MariaDB</option>
-                  <option value="postgres">PostgreSQL</option>
+                  {ready.length === 0 && <option value="">No engine running</option>}
+                  {ready.includes('mysql') && <option value="mysql">MySQL</option>}
+                  {ready.includes('mariadb') && <option value="mariadb">MariaDB</option>}
+                  {ready.includes('postgres') && <option value="postgres">PostgreSQL</option>}
                 </select>
               </div>
               <div className="space-y-1">
@@ -414,7 +421,7 @@ function DatabasesTab({ site }) {
               </div>
             </div>
             <p className="text-xs text-muted-foreground">Credentials will be injected into .env automatically.</p>
-            <Button size="sm" onClick={create} loading={loading}>Create database</Button>
+            <Button size="sm" onClick={create} loading={loading} disabled={!engine || !dbName}>Create database</Button>
           </div>
         )}
         {dbs.length === 0 ? <p className="text-sm text-muted-foreground">No databases yet.</p> : (

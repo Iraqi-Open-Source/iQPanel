@@ -186,7 +186,7 @@ export default function SiteWizardPage() {
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">PHP Version</label>
                 <select
-                  className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
+                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                   value={phpVersion}
                   onChange={(e) => setPhpVersion(e.target.value)}
                 >

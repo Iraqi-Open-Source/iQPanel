@@ -17,15 +17,39 @@ const sizes = {
   icon:    'h-9 w-9',
 };
 
-export default function Button({ className, variant = 'default', size = 'default', loading, children, ...props }) {
+export function buttonClassName({ variant = 'default', size = 'default', className } = {}) {
+  return cn(
+    'inline-flex items-center justify-center gap-2 rounded-md font-medium ring-offset-background transition-colors',
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
+    'disabled:pointer-events-none disabled:opacity-50',
+    variants[variant], sizes[size], className,
+  );
+}
+
+export default function Button({ className, variant = 'default', size = 'default', loading, asChild = false, children, ...props }) {
+  const classes = buttonClassName({ variant, size, className });
+
+  if (asChild) {
+    const child = React.Children.only(children);
+    const disabled = loading || props.disabled;
+    return React.cloneElement(child, {
+      ...props,
+      className: cn(classes, disabled && 'pointer-events-none opacity-50', child.props.className),
+      'aria-disabled': disabled || undefined,
+      onClick: (e) => {
+        if (disabled) {
+          e.preventDefault();
+          return;
+        }
+        child.props.onClick?.(e);
+        props.onClick?.(e);
+      },
+    });
+  }
+
   return (
     <button
-      className={cn(
-        'inline-flex items-center justify-center gap-2 rounded-md font-medium ring-offset-background transition-colors',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
-        'disabled:pointer-events-none disabled:opacity-50',
-        variants[variant], sizes[size], className,
-      )}
+      className={classes}
       disabled={loading || props.disabled}
       {...props}
     >

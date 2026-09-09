@@ -3,10 +3,10 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card.jsx';
-import Button from '../components/ui/Button.jsx';
+import { buttonClassName } from '../components/ui/Button.jsx';
 import Badge from '../components/ui/Badge.jsx';
 import { Plus, Globe, Server } from 'lucide-react';
-import { timeAgo, statusColor } from '../lib/utils.js';
+import { timeAgo } from '../lib/utils.js';
 
 const TYPE_ICONS = {
   laravel: '🔺', php: '🐘', node: '🟢', static: '📄', docker: '🐳',
@@ -22,28 +22,35 @@ export default function SitesPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Sites</h1>
-        <Button asChild>
-          <Link to="/sites/new"><Plus className="h-4 w-4" /> New Site</Link>
-        </Button>
+        <Link to="/sites/new" className={buttonClassName()}>
+          <Plus className="h-4 w-4 shrink-0" /> New Site
+        </Link>
       </div>
 
       {isLoading ? <p className="text-muted-foreground">Loading…</p> : null}
 
       {!isLoading && sites.length === 0 && (
-        <Card>
+        <Card className="border-dashed">
           <CardContent className="flex flex-col items-center gap-4 py-16 text-center">
-            <Server className="h-12 w-12 text-muted-foreground" />
-            <h2 className="text-lg font-semibold">No sites yet</h2>
-            <p className="text-sm text-muted-foreground">Create your first Laravel or PHP site in seconds.</p>
-            <Button asChild><Link to="/sites/new"><Plus className="h-4 w-4" /> Create Site</Link></Button>
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted">
+              <Server className="h-7 w-7 text-muted-foreground" />
+            </div>
+            <div className="space-y-1">
+              <h2 className="text-lg font-semibold">No sites yet</h2>
+              <p className="text-sm text-muted-foreground max-w-sm">Create your first Laravel or PHP site in seconds.</p>
+            </div>
+            <Link to="/sites/new" className={buttonClassName()}>
+              <Plus className="h-4 w-4 shrink-0" /> Create Site
+            </Link>
           </CardContent>
         </Card>
       )}
 
+      {sites.length > 0 && (
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {sites.map((site) => (
-          <Link key={site.id} to={`/sites/${site.slug}`}>
-            <Card className="hover:shadow-md transition-shadow cursor-pointer">
+          <Link key={site.id} to={`/sites/${site.slug}`} className="group block">
+            <Card className="h-full transition-all group-hover:border-primary/40 group-hover:shadow-md">
               <CardContent className="p-5 space-y-3">
                 <div className="flex items-start justify-between">
                   <div>
@@ -64,6 +71,7 @@ export default function SitesPage() {
           </Link>
         ))}
       </div>
+      )}
     </div>
   );
 }

@@ -36,7 +36,7 @@ export default function Dashboard() {
   });
   const { data: engines } = useQuery({
     queryKey: ['db-engines'],
-    queryFn: () => api.get('/api/databases'),
+    queryFn: () => api.get('/api/databases/engines'),
     staleTime: 30_000,
   });
 

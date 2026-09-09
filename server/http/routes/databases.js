@@ -1,14 +1,80 @@
 import { randomBytes } from 'node:crypto';
 import { query, get, run } from '../../data/db.js';
-import { invoke } from '../../agent-client.js';
+import { invoke, stream } from '../../agent-client.js';
 import { requireAuth } from '../middleware.js';
 import { rbac } from '../rbac.js';
-import { encryptField, decryptField } from '../../domain/secrets.js';
+import { encryptField } from '../../domain/secrets.js';
 
 function uuid()   { return randomBytes(16).toString('hex'); }
 function nowIso() { return new Date().toISOString(); }
 
+const ENGINE_PACKAGES = {
+  mysql:    'mysql-server',
+  mariadb:  'mariadb-server',
+  postgres: 'postgresql',
+  redis:    'redis-server',
+};
+
 export function registerDatabases(app) {
+  app.get('/api/databases/engines', requireAuth, async (req, res) => {
+    try { res.json(await invoke('db.engines')); }
+    catch (e) { res.status(503).json({ error: e.message }); }
+  });
+
+  app.post('/api/databases/engines/:engine/install', requireAuth, rbac('admin'), async (req, res) => {
+    const pkg = ENGINE_PACKAGES[req.params.engine];
+    if (!pkg) return res.status(400).json({ error: 'Unknown engine' });
+    try {
+      await stream('pkg.install', { name: pkg });
+      res.json({ ok: true, package: pkg });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
+  app.get('/api/databases/existing', requireAuth, async (req, res) => {
+    const engine = String(req.query.engine ?? '');
+    if (!['mysql', 'mariadb', 'postgres'].includes(engine)) {
+      return res.status(400).json({ error: 'engine must be mysql, mariadb, or postgres' });
+    }
+    try {
+      const names = await invoke('db.list', { engine });
+      const tracked = new Set(query('SELECT db_name FROM databases WHERE engine = ?', [engine]).map((r) => r.db_name));
+      res.json((Array.isArray(names) ? names : []).filter((n) => !tracked.has(n)));
+    } catch (e) { res.status(503).json({ error: e.message }); }
+  });
+
+  app.post('/api/databases/import', requireAuth, rbac('operator'), async (req, res) => {
+    const { engine, db_name, db_user, site_slug } = req.body ?? {};
+    if (!['mysql', 'mariadb', 'postgres'].includes(engine)) {
+      return res.status(400).json({ error: 'engine must be mysql, mariadb, or postgres' });
+    }
+    if (!db_name || !/^[a-z0-9_]{1,64}$/.test(db_name)) {
+      return res.status(400).json({ error: 'Invalid db_name (a-z0-9_, 1-64 chars)' });
+    }
+    const user = db_user || db_name;
+    if (!/^[a-z0-9_]{1,32}$/.test(user)) {
+      return res.status(400).json({ error: 'Invalid db_user (a-z0-9_, 1-32 chars)' });
+    }
+    if (get('SELECT id FROM databases WHERE db_name = ?', [db_name])) {
+      return res.status(409).json({ error: 'Database is already tracked' });
+    }
+    let siteId = null;
+    if (site_slug) {
+      const site = get('SELECT id FROM sites WHERE slug = ?', [site_slug]);
+      if (!site) return res.status(404).json({ error: 'Site not found' });
+      siteId = site.id;
+    }
+    let names;
+    try { names = await invoke('db.list', { engine }); }
+    catch (e) { return res.status(503).json({ error: e.message }); }
+    if (!Array.isArray(names) || !names.includes(db_name)) {
+      return res.status(404).json({ error: `Database ${db_name} does not exist on ${engine}` });
+    }
+    const id = uuid();
+    run('INSERT INTO databases (id,site_id,engine,db_name,db_user,db_pass_enc,granted,created_at) VALUES (?,?,?,?,?,?,1,?)',
+      [id, siteId, engine, db_name, user, '', nowIso()]);
+    res.status(201).json({ id, engine, db_name, db_user: user, imported: true, granted: true });
+  });
+
   // GET /api/databases
   app.get('/api/databases', requireAuth, (req, res) => {
     const dbs = query('SELECT id,site_id,engine,db_name,db_user,granted,created_at FROM databases ORDER BY created_at DESC');

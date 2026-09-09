@@ -32,47 +32,57 @@ export function registerSites(app) {
 
   // POST /api/sites  – Create site (step 1-3 of wizard; step 4-5 via /api/sites/:slug/wizard)
   app.post('/api/sites', requireAuth, rbac('operator'), async (req, res) => {
-    const {
-      name, type = 'laravel', repo_url, domain, port,
-      php_version = '8.3', webserver = 'nginx',
-    } = req.body ?? {};
+    try {
+      const {
+        name, type = 'laravel', repo_url, domain, port,
+        php_version = '8.3', webserver = 'nginx',
+      } = req.body ?? {};
 
-    if (!name) return res.status(400).json({ error: 'name required' });
-    if (!['laravel','php','node','static','docker'].includes(type)) {
-      return res.status(400).json({ error: 'Invalid type' });
-    }
-
-    const slug = slugify(name);
-    const existing = get('SELECT id FROM sites WHERE slug = ?', [slug]);
-    if (existing) return res.status(409).json({ error: 'Slug already exists', slug });
-
-    // Resolve port
-    let assignedPort = port;
-    if (!domain && !assignedPort) {
-      try { assignedPort = await allocatePort(); } catch (e) {
-        return res.status(500).json({ error: `Port allocation failed: ${e.message}` });
+      if (!name) return res.status(400).json({ error: 'name required' });
+      if (!['laravel','php','node','static','docker'].includes(type)) {
+        return res.status(400).json({ error: 'Invalid type' });
       }
+
+      const slug = slugify(name);
+      const existing = get('SELECT id FROM sites WHERE slug = ?', [slug]);
+      if (existing) return res.status(409).json({ error: 'Slug already exists', slug });
+
+      // Resolve port — empty string / 0 from the wizard counts as "auto"
+      let assignedPort = port === '' || port === undefined ? null : port;
+      if (assignedPort != null) assignedPort = Number(assignedPort);
+      if (assignedPort != null && !Number.isInteger(assignedPort)) {
+        return res.status(400).json({ error: 'Invalid port' });
+      }
+      const host = domain || null;
+      if (!host && !assignedPort) {
+        try { assignedPort = await allocatePort(); } catch (e) {
+          return res.status(500).json({ error: `Port allocation failed: ${e.message}` });
+        }
+      }
+
+      const id = uuid();
+      const now = nowIso();
+
+      transaction(() => {
+        run(`INSERT INTO sites (id,name,slug,type,repo_url,domain,port,php_version,webserver,run_as_user,directory,status,created_at,updated_at)
+             VALUES (?,?,?,?,?,?,?,?,?,'','','provisioning',?,?)`,
+          [id, name, slug, type, repo_url ?? null, host, assignedPort ?? null, php_version, webserver, now, now]);
+      });
+
+      auditLog(req, 'site.create', slug);
+
+      // Async provisioning
+      provisionSite(id, slug, type, php_version, webserver, assignedPort, host, repo_url).catch((e) => {
+        try { run('UPDATE sites SET status = ? WHERE id = ?', ['error', id]); } catch {}
+        console.error('[provision] error', e?.message ?? e);
+      });
+
+      const site = get('SELECT * FROM sites WHERE id = ?', [id]);
+      res.status(201).json(site);
+    } catch (e) {
+      console.error('[sites.create]', e);
+      if (!res.headersSent) res.status(500).json({ error: e.message ?? 'Failed to create site' });
     }
-
-    const id = uuid();
-    const now = nowIso();
-
-    transaction(() => {
-      run(`INSERT INTO sites (id,name,slug,type,repo_url,domain,port,php_version,webserver,run_as_user,directory,status,created_at,updated_at)
-           VALUES (?,?,?,?,?,?,?,?,?,'','','provisioning',?,?)`,
-        [id, name, slug, type, repo_url ?? null, domain ?? null, assignedPort ?? null, php_version, webserver, now, now]);
-    });
-
-    auditLog(req, 'site.create', slug);
-
-    // Async provisioning
-    provisionSite(id, slug, type, php_version, webserver, assignedPort, domain, repo_url).catch((e) => {
-      run('UPDATE sites SET status = ? WHERE id = ?', ['error', id]);
-      console.error('[provision] error', e.message);
-    });
-
-    const site = get('SELECT * FROM sites WHERE id = ?', [id]);
-    res.status(201).json(site);
   });
 
   // GET /api/sites/:slug/wizard/deploy-key  – step 4: generate/return deploy key
@@ -195,6 +205,12 @@ async function provisionSite(id, slug, type, phpVersion, webserver, port, domain
       : buildNginxVhost({ slug, type, domain, port, phpVersion, siteUser });
 
     await invoke('nginx.write_vhost', { slug, content: vhostContent });
+
+    if (port && !domain) {
+      try { await invoke('fw.allow', { port, proto: 'tcp' }); } catch (e) {
+        console.error('[provision] ufw allow failed', e?.message ?? e);
+      }
+    }
 
     if (type === 'laravel' || type === 'php') {
       const poolContent = buildPhpFpmPool({ slug, phpVersion, siteUser, directory });

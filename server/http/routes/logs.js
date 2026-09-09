@@ -36,7 +36,12 @@ export function registerLogs(app) {
     const path = resolveSafeLogPath(req.params.source, req.params.filename);
     if (!path || !existsSync(path)) return res.status(404).json({ error: 'Log not found' });
     res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-    createReadStream(path).pipe(res);
+    const stream = createReadStream(path);
+    stream.on('error', (e) => {
+      if (!res.headersSent) res.status(500).json({ error: e.message });
+      else res.end();
+    });
+    stream.pipe(res);
   });
 
   // GET /api/logs/:source/:filename/tail  – SSE live tail

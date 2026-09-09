@@ -50,8 +50,21 @@ export function exec(sql) {
   return db.exec(sql);
 }
 
+/**
+ * node:sqlite DatabaseSync has no better-sqlite3-style db.transaction().
+ * Use an explicit BEGIN/COMMIT/ROLLBACK on this connection instead.
+ */
 export function transaction(fn) {
-  return db.transaction(fn)();
+  if (typeof db.transaction === 'function') return db.transaction(fn)();
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const result = fn();
+    db.exec('COMMIT');
+    return result;
+  } catch (e) {
+    try { db.exec('ROLLBACK'); } catch {}
+    throw e;
+  }
 }
 
 export function close() {

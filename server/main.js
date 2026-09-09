@@ -96,5 +96,8 @@ attachTerminalWS(httpServer);
 // Purge expired sessions every hour
 setInterval(purgeExpiredSessions, 60 * 60 * 1000);
 
+process.on('unhandledRejection', (err) => {
+  console.error('[unhandledRejection]', err);
+});
 process.on('SIGTERM', () => process.exit(0));
 process.on('SIGINT',  () => process.exit(0));

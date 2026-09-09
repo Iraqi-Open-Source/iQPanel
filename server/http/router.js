@@ -64,10 +64,17 @@ export class Router {
       const chain = [...this._middleware, ...fns];
       let i = 0;
       const next = (err) => {
-        if (err) { res.status(500).json({ error: err.message ?? String(err) }); return; }
+        if (err) {
+          console.error('[http]', err);
+          if (!res.headersSent) res.status(500).json({ error: err.message ?? String(err) });
+          return;
+        }
         const fn = chain[i++];
         if (!fn) { res.status(404).json({ error: 'Not found' }); return; }
-        try { fn(req, res, next); } catch (e) { next(e); }
+        try {
+          const result = fn(req, res, next);
+          if (result && typeof result.then === 'function') result.catch(next);
+        } catch (e) { next(e); }
       };
       next();
       return;

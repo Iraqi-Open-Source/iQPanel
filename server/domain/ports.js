@@ -6,15 +6,22 @@ const PORT_RANGE_END   = 8999;
 
 export async function allocatePort() {
   const used = new Set(
-    query('SELECT port FROM sites WHERE port IS NOT NULL').map((r) => r.port)
+    query('SELECT port FROM sites WHERE port IS NOT NULL')
+      .map((r) => Number(r.port))
+      .filter((n) => Number.isInteger(n) && n > 0)
   );
+
+  const panelPort = Number(process.env.PANEL_PORT);
+  if (Number.isInteger(panelPort) && panelPort > 0) used.add(panelPort);
 
   let listeners = new Set();
   try {
     const rows = await invoke('fw.listeners');
-    for (const r of rows) {
-      const m = r.local?.match(/:(\d+)$/);
-      if (m) listeners.add(Number(m[1]));
+    if (Array.isArray(rows)) {
+      for (const r of rows) {
+        const m = String(r?.local ?? '').match(/:(\d+)$/);
+        if (m) listeners.add(Number(m[1]));
+      }
     }
   } catch {}
 

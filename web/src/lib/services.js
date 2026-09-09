@@ -1,5 +1,5 @@
 /** Units the agent will accept for start/stop/restart. */
-export const ACTIONABLE_UNIT = /^(nginx|apache2|httpd|mysql|mariadb|postgresql|redis-server|redis|docker|ufw|ssh|sshd|fail2ban|iqpanel|iqpanel-agent|iqpanel-worker|php\d+\.\d+-fpm|panel-[a-z0-9-]+-[a-z]+)\.service$|^postgresql@.+\.service$/;
+export const ACTIONABLE_UNIT = /^(nginx|apache2|httpd|mysql|mariadb|postgresql|redis-server|redis|docker|ufw|ssh|sshd|fail2ban|iqpanel|php\d+\.\d+-fpm|panel-[a-z0-9-]+-[a-z]+)\.service$|^postgresql@.+\.service$/;
 
 const IMPORTANT_RULES = [
   { re: /^nginx\.service$/,                    label: () => 'Nginx' },
@@ -14,8 +14,6 @@ const IMPORTANT_RULES = [
   { re: /^(ssh|sshd)\.service$/,               label: () => 'SSH' },
   { re: /^fail2ban\.service$/,                 label: () => 'Fail2ban' },
   { re: /^iqpanel\.service$/,                  label: () => 'iQPanel' },
-  { re: /^iqpanel-agent\.service$/,           label: () => 'Agent' },
-  { re: /^iqpanel-worker\.service$/,          label: () => 'Worker' },
 ];
 
 export function unitName(s) {

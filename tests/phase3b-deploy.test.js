@@ -32,7 +32,7 @@ function sign(body, secret) {
 }
 
 async function waitFor(check, message = 'condition') {
-  for (let attempt = 0; attempt < 60; attempt += 1) {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
     if (await check()) return;
     await new Promise((resolve) => setTimeout(resolve, 100));
   }

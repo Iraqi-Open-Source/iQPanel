@@ -26,7 +26,11 @@ function safeSitePath(slug, relative = '') {
 
 function listFiles(slug, relative = '.') {
   const directory = safeSitePath(slug, relative);
-  if (!fs.existsSync(directory) || !fs.statSync(directory).isDirectory()) throw new Error('Directory not found');
+  if (!fs.existsSync(directory)) {
+    fs.mkdirSync(directory, { recursive: true });
+    return [];
+  }
+  if (!fs.statSync(directory).isDirectory()) throw new Error('Directory not found');
   return fs.readdirSync(directory, { withFileTypes: true }).map((entry) => {
     const full = path.join(directory, entry.name);
     const stats = fs.statSync(full);

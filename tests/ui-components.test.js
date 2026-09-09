@@ -75,6 +75,8 @@ test('app wires the environment editor and site terminal', () => {
   assert.match(app, /site-env-save/);
   assert.match(app, /path: "\.env"/);
   assert.match(app, /site-terminal-form/);
+  assert.match(app, /data-site-file-new/);
+  assert.match(app, /Deploy your site, upload files/);
   assert.match(phase3d, /iqpanelEnsureReauth/);
   assert.match(app, /iqpanelEnsureReauth/);
   assert.match(app, /reauth_valid/);

@@ -225,6 +225,8 @@
       <div class="panel-heading"><div><h2>File manager</h2><p>Browse and edit files inside this site's app directory.</p></div>
         <div class="row-actions">
           <button type="button" class="secondary-button" data-site-files-refresh>Refresh</button>
+          <button type="button" class="secondary-button" data-site-file-new="file">New file</button>
+          <button type="button" class="secondary-button" data-site-file-new="folder">New folder</button>
           <label class="secondary-button" for="site-files-upload">Upload<input id="site-files-upload" type="file" hidden /></label>
         </div>
       </div>

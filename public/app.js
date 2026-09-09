@@ -402,7 +402,12 @@
         break;
       case "files":
         paint(UI.siteTabFiles());
-        await loadSiteFiles().catch((error) => { $("#site-files-list").innerHTML = UI.emptyInline(error.message); });
+        await loadSiteFiles().catch((error) => {
+          const hint = /not found/i.test(error.message || "")
+            ? "This directory doesn't exist yet — it is created when the site is deployed. Use New file, New folder, or Upload to create it."
+            : error.message;
+          $("#site-files-list").innerHTML = UI.emptyInline(hint);
+        });
         break;
       case "php": {
         paint(UI.siteTabPhp(site));
@@ -503,7 +508,7 @@
   const siteFilePathFor = (name) => state.siteFilesPath === "." ? name : `${state.siteFilesPath.replace(/\/$/, "")}/${name}`;
 
   const renderSiteFiles = (entries) => {
-    $("#site-files-list").innerHTML = (entries || []).map((entry) => `<div class="data-row"><button type="button" class="text-button" data-site-file-name="${escapeHtml(entry.name)}" data-site-file-type="${escapeHtml(entry.type)}">${entry.type === "directory" ? "□" : "▤"} ${escapeHtml(entry.name)}</button><small>${escapeHtml(String(entry.size))} bytes</small><div class="row-actions"><button type="button" class="secondary-button" data-site-file-action="rename" data-site-file-name="${escapeHtml(entry.name)}">Rename</button>${entry.type === "file" ? `<button type="button" class="secondary-button" data-site-file-action="download" data-site-file-name="${escapeHtml(entry.name)}">Download</button>` : ""}<button type="button" class="secondary-button" data-site-file-action="delete" data-site-file-name="${escapeHtml(entry.name)}">Delete</button></div></div>`).join("") || UI.emptyRow("Directory is empty.");
+    $("#site-files-list").innerHTML = (entries || []).map((entry) => `<div class="data-row"><button type="button" class="text-button" data-site-file-name="${escapeHtml(entry.name)}" data-site-file-type="${escapeHtml(entry.type)}">${entry.type === "directory" ? "□" : "▤"} ${escapeHtml(entry.name)}</button><small>${escapeHtml(String(entry.size))} bytes</small><div class="row-actions"><button type="button" class="secondary-button" data-site-file-action="rename" data-site-file-name="${escapeHtml(entry.name)}">Rename</button>${entry.type === "file" ? `<button type="button" class="secondary-button" data-site-file-action="download" data-site-file-name="${escapeHtml(entry.name)}">Download</button>` : ""}<button type="button" class="secondary-button" data-site-file-action="delete" data-site-file-name="${escapeHtml(entry.name)}">Delete</button></div></div>`).join("") || UI.emptyRow("Directory is empty. Deploy your site, upload files, or use New file / New folder to create something here.");
   };
 
   const loadSiteFiles = async () => {
@@ -1179,6 +1184,26 @@
       }
       const siteFilesRefresh = event.target.closest("[data-site-files-refresh]");
       if (siteFilesRefresh) {
+        await loadSiteFiles().catch((error) => showToast(error.message));
+        return;
+      }
+      const fileNew = event.target.closest("[data-site-file-new]");
+      if (fileNew) {
+        const site = state.siteDetailData;
+        if (!site) return;
+        const name = window.prompt(fileNew.dataset.siteFileNew === "folder" ? "New folder name" : "New file name");
+        if (!name || /[\\/]/.test(name)) return;
+        const target = siteFilePathFor(name);
+        try {
+          if (fileNew.dataset.siteFileNew === "folder") {
+            await api(`/api/sites/${encodeURIComponent(site.slug)}/files`, { method: "PUT", body: JSON.stringify({ action: "mkdir", path: target }) });
+          } else {
+            await api(`/api/sites/${encodeURIComponent(site.slug)}/files`, { method: "POST", body: JSON.stringify({ path: target, content: "" }) });
+          }
+        } catch (error) {
+          showToast(error.message);
+          return;
+        }
         await loadSiteFiles().catch((error) => showToast(error.message));
         return;
       }

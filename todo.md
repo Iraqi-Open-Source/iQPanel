@@ -189,6 +189,7 @@ Goal: make the panel easier to use — real site detail view, truthful DB provis
 - [x] Health panel shows all engines (mysql, mariadb, postgres, redis, docker, nginx, apache)
 - [x] UI consumes `/api/system/engines` (and features where useful)
 - [x] Plesk-style site-centric hub: site detail page now has tabs — Overview, Databases, Files, PHP, SSL / Domain, Cron, Logs, Backups — all scoped to the site (per-site file manager with editor/upload, per-site log viewer with live SSE stream, per-site cron list, per-site backup list + "Backup now", SSL certificate request, domain/port edit with apply, firewall open/close port)
+- [x] Laravel .env editor + live site terminal: Environment tab (only for Laravel sites) edits app/.env through the existing files API with a create-on-save path and a config:clear hint; Terminal tab starts a live session scoped to the site (cwd app/, runs as the site user, SSE output stream, command input, session closed automatically on tab/view/site change)
 
 ### Tests
 

@@ -42,6 +42,39 @@ test('components render accessible site markup', () => {
   assert.match(card, /8080/);
 });
 
+test('site hub shows environment tab for laravel sites and terminal for all', () => {
+  const document = {
+    documentElement: { dataset: {} },
+    getElementById: () => null,
+    addEventListener: () => {},
+    readyState: 'complete',
+  };
+  const context = {
+    window: { IQPanelUI: null, document },
+    document,
+    console,
+  };
+  vm.runInNewContext(fs.readFileSync(path.join(publicDir, 'components.js'), 'utf8'), context);
+  const ui = context.window.IQPanelUI;
+  const laravel = ui.siteDetail({ slug: 'demo', name: 'Demo', type: 'laravel', status: 'online' }, { tab: 'overview' });
+  assert.match(laravel, /data-site-tab="env"/);
+  assert.match(laravel, /data-site-tab="terminal"/);
+  const node = ui.siteDetail({ slug: 'demo', name: 'Demo', type: 'node', status: 'online' }, { tab: 'overview' });
+  assert.doesNotMatch(node, /data-site-tab="env"/);
+  assert.match(node, /data-site-tab="terminal"/);
+  assert.match(ui.siteTabEnv({ slug: 'demo' }, { content: 'APP_KEY=x', exists: true }), /APP_KEY=x/);
+  assert.match(ui.siteTabEnv({ slug: 'demo' }, { exists: false }), /does not exist yet/);
+  assert.match(ui.siteTabTerminal({ slug: 'demo', run_as_user: 'iqpanel-demo' }), /site-terminal-form/);
+});
+
+test('app wires the environment editor and site terminal', () => {
+  const app = fs.readFileSync(path.join(publicDir, 'app.js'), 'utf8');
+  assert.match(app, /\/api\/terminal/);
+  assert.match(app, /site-env-save/);
+  assert.match(app, /path: "\.env"/);
+  assert.match(app, /site-terminal-form/);
+});
+
 test('settings exposes the self-update control', () => {
   const html = fs.readFileSync(path.join(publicDir, 'index.html'), 'utf8');
   const app = fs.readFileSync(path.join(publicDir, 'app.js'), 'utf8');

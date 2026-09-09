@@ -13,6 +13,8 @@
     siteFilesPath: ".",
     siteSelectedFile: "",
     pendingDbSiteSlug: "",
+    siteTerminalId: null,
+    siteTerminalStream: null,
     engines: null,
     servicesSiteSlug: "",
     systemServices: [],
@@ -385,6 +387,7 @@
     if (!site || !container) return;
     state.siteDetailTab = tab;
     if (tab !== "logs") stopSiteLogsStream();
+    if (tab !== "terminal") stopSiteTerminal();
     $$("#site-detail-body [data-site-tab]").forEach((item) => item.classList.toggle("selected", item.dataset.siteTab === tab));
     const paint = (markup) => { container.innerHTML = markup; };
     switch (tab) {
@@ -435,6 +438,25 @@
         if (files.length) await loadSiteLogSnapshot();
         break;
       }
+      case "env": {
+        if (site.type !== "laravel") {
+          paint(UI.emptyInline("The environment editor is only available for Laravel sites."));
+          return;
+        }
+        paint(UI.emptyInline("Loading app/.env…"));
+        let result = null;
+        try {
+          result = await api(`/api/sites/${encodeURIComponent(site.slug)}/files/content?path=${encodeURIComponent(".env")}`);
+        } catch {
+          result = null;
+        }
+        paint(UI.siteTabEnv(site, { content: result?.content || "", exists: Boolean(result) }));
+        break;
+      }
+      case "terminal":
+        paint(UI.siteTabTerminal(site));
+        await startSiteTerminal();
+        break;
       case "backups": {
         paint(UI.emptyInline("Loading backups…"));
         let items = [];
@@ -546,6 +568,68 @@
       state.logsStream.close();
       state.logsStream = null;
     }
+  };
+
+  const stopSiteTerminal = () => {
+    if (state.siteTerminalStream) {
+      state.siteTerminalStream.close();
+      state.siteTerminalStream = null;
+    }
+    if (state.siteTerminalId) {
+      const id = state.siteTerminalId;
+      state.siteTerminalId = null;
+      api(`/api/terminal/${encodeURIComponent(id)}`, { method: "DELETE" }).catch(() => {});
+    }
+    const note = $("#site-terminal-status");
+    if (note) note.textContent = "Session closed — press Start session to connect.";
+  };
+
+  const startSiteTerminal = async () => {
+    const site = state.siteDetailData;
+    const output = $("#site-terminal-output");
+    const note = $("#site-terminal-status");
+    if (!site || !output || state.siteTerminalId) return;
+    stopSiteTerminal();
+    output.textContent = "";
+    if (note) note.textContent = "Starting session…";
+    let session;
+    try {
+      session = await api("/api/terminal", { method: "POST", body: JSON.stringify({ site_slug: site.slug, cwd: "." }) });
+    } catch (error) {
+      if (note) note.textContent = error.message;
+      return;
+    }
+    if (state.siteDetailData?.slug !== site.slug) {
+      api(`/api/terminal/${encodeURIComponent(session.id)}`, { method: "DELETE" }).catch(() => {});
+      return;
+    }
+    state.siteTerminalId = session.id;
+    output.textContent = `# Connected to ${site.slug}/app as ${session.user || "panel user"} — type a command and press Enter.\n`;
+    output.scrollTop = output.scrollHeight;
+    if (note) note.textContent = `Session live · ${session.user || "panel user"} · ${session.cwd}`;
+    const source = new EventSource(`/api/terminal/${encodeURIComponent(session.id)}/stream`);
+    state.siteTerminalStream = source;
+    source.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        const current = $("#site-terminal-output");
+        if (!current) return;
+        current.textContent += payload.chunk || "";
+        current.scrollTop = current.scrollHeight;
+      } catch {
+        /* ignore malformed chunks */
+      }
+    };
+    source.onerror = () => {
+      state.siteTerminalStream = null;
+      try { source.close(); } catch {}
+      if (state.siteTerminalId) {
+        api(`/api/terminal/${encodeURIComponent(state.siteTerminalId)}`, { method: "DELETE" }).catch(() => {});
+        state.siteTerminalId = null;
+      }
+      const ended = $("#site-terminal-status");
+      if (ended) ended.textContent = "Session ended — press Start session to reconnect.";
+    };
   };
 
   const stopLogsStream = () => {
@@ -902,6 +986,7 @@
     if (view === "settings") loadAlertSettings().catch(() => {});
     if (view === "settings") renderSettings();
     if (view !== "logs") stopLogsStream();
+    if (view !== "site-detail") stopSiteTerminal();
   };
 
   const logout = async () => {
@@ -1113,6 +1198,24 @@
         await loadSiteLogSnapshot().catch((error) => showToast(error.message));
         return;
       }
+      const envSave = event.target.closest("#site-env-save");
+      if (envSave) {
+        const site = state.siteDetailData;
+        const editor = $("#site-env-editor");
+        if (!site || !editor) return;
+        try {
+          await api(`/api/sites/${encodeURIComponent(site.slug)}/files`, { method: "POST", body: JSON.stringify({ path: ".env", content: editor.value }) });
+          showToast("app/.env saved");
+        } catch (error) {
+          showToast(error.message);
+        }
+        return;
+      }
+      const termStart = event.target.closest("#site-terminal-start");
+      if (termStart) {
+        await startSiteTerminal();
+        return;
+      }
       const saveBtn = event.target.closest("#site-file-save");
       if (saveBtn) {
         const site = state.siteDetailData;
@@ -1161,6 +1264,19 @@
     });
 
     $("#site-detail-body")?.addEventListener("submit", async (event) => {
+      if (event.target.id === "site-terminal-form") {
+        event.preventDefault();
+        const field = $("#site-terminal-input");
+        const data = field?.value ?? "";
+        if (!field || !data.trim() || !state.siteTerminalId) return;
+        field.value = "";
+        try {
+          await api(`/api/terminal/${encodeURIComponent(state.siteTerminalId)}/input`, { method: "POST", body: JSON.stringify({ data: `${data}\n` }) });
+        } catch (error) {
+          showToast(error.message);
+        }
+        return;
+      }
       if (event.target.id !== "site-domain-form") return;
       event.preventDefault();
       const site = state.siteDetailData;

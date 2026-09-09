@@ -136,6 +136,7 @@
     ['cron', 'Cron'],
     ['logs', 'Logs'],
     ['backups', 'Backups'],
+    ['terminal', 'Terminal'],
   ];
 
   const siteDetailHeader = (site) => `
@@ -155,10 +156,15 @@
       </div>
     </div>`;
 
-  const siteTabs = (active = 'overview') => `
+  const siteTabs = (site, active = 'overview') => {
+    const tabs = site && site.type === 'laravel'
+      ? [...SITE_TABS.slice(0, 4), ['env', 'Environment'], ...SITE_TABS.slice(4)]
+      : SITE_TABS;
+    return `
     <nav class="site-tabs filter-tabs" role="tablist">
-      ${SITE_TABS.map(([id, label]) => `<button type="button" role="tab" class="${id === active ? 'selected' : ''}" data-site-tab="${escapeHtml(id)}">${escapeHtml(label)}</button>`).join('')}
+      ${tabs.map(([id, label]) => `<button type="button" role="tab" class="${id === active ? 'selected' : ''}" data-site-tab="${escapeHtml(id)}">${escapeHtml(label)}</button>`).join('')}
     </nav>`;
+  };
 
   const siteTabOverview = (site) => {
     const paths = site.paths || {};
@@ -324,9 +330,29 @@
       </section>`;
   };
 
+  const siteTabEnv = (site, { content = '', exists = true } = {}) => `
+    <section class="panel">
+      <div class="panel-heading"><div><h2>Environment (.env)</h2><p><code>app/.env</code> for this Laravel application.</p></div>
+        <div class="row-actions"><button type="button" class="primary-button" id="site-env-save">Save .env</button></div>
+      </div>
+      ${exists ? '' : emptyInline('app/.env does not exist yet — saving will create it.')}
+      <textarea id="site-env-editor" class="logs-output" rows="16" spellcheck="false">${escapeHtml(content)}</textarea>
+      <p class="empty-inline">Laravel reads these values on every request. If the app caches config, run <code>php artisan config:clear</code> from the Terminal tab after saving.</p>
+    </section>`;
+
+  const siteTabTerminal = (site) => `
+    <section class="panel">
+      <div class="panel-heading"><div><h2>Live terminal</h2><p>Shell inside <code>app/</code> as <code>${escapeHtml(site.run_as_user || 'the site user')}</code>.</p></div>
+        <div class="row-actions"><button type="button" class="secondary-button" id="site-terminal-start">Start session</button></div>
+      </div>
+      <p class="subheading" id="site-terminal-status">Session closed — press Start session to connect.</p>
+      <pre class="logs-output" id="site-terminal-output"></pre>
+      <form id="site-terminal-form"><input id="site-terminal-input" autocomplete="off" placeholder="e.g. php artisan migrate" /><button type="submit" class="primary-button">Send</button></form>
+    </section>`;
+
   const siteDetail = (site, { tab = 'overview', dbs = [] } = {}) => `
     ${siteDetailHeader(site)}
-    ${siteTabs(tab)}
+    ${siteTabs(site, tab)}
     <div id="site-tab-content">${siteTabOverview(site)}</div>`;
 
   const theme = {
@@ -377,6 +403,8 @@
     siteTabCron,
     siteTabLogs,
     siteTabBackups,
+    siteTabEnv,
+    siteTabTerminal,
     pathRow,
     statusPill,
     typeLabel,

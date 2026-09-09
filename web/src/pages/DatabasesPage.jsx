@@ -8,11 +8,15 @@ import Input from '../components/ui/Input.jsx';
 import Spinner from '../components/ui/Spinner.jsx';
 
 const ENGINES = [
-  { id: 'mysql',    label: 'MySQL',      pkg: 'mysql-server',    unit: 'mysql.service' },
-  { id: 'mariadb',  label: 'MariaDB',    pkg: 'mariadb-server',  unit: 'mariadb.service' },
-  { id: 'postgres', label: 'PostgreSQL', pkg: 'postgresql',       unit: 'postgresql.service' },
-  { id: 'redis',    label: 'Redis',      pkg: 'redis-server',    unit: 'redis-server.service' },
+  { id: 'mysql',    label: 'MySQL',      pkg: 'mysql-server',    unit: 'mysql.service',       port: 3306 },
+  { id: 'mariadb',  label: 'MariaDB',    pkg: 'mariadb-server',  unit: 'mariadb.service',     port: 3306 },
+  { id: 'postgres', label: 'PostgreSQL', pkg: 'postgresql',       unit: 'postgresql.service',  port: 5432 },
+  { id: 'redis',    label: 'Redis',      pkg: 'redis-server',    unit: 'redis-server.service', port: 6379 },
 ];
+
+function enginePort(id) {
+  return ENGINES.find((e) => e.id === id)?.port;
+}
 
 function engineStatus(engines, id) {
   const e = engines?.[id] ?? {};
@@ -139,6 +143,7 @@ export default function DatabasesPage() {
                 </Badge>
               </div>
               <p className="font-mono text-[11px] text-muted-foreground truncate">{meta.unit}</p>
+              <p className="text-[11px] text-muted-foreground">Port {meta.port}</p>
               <div className="flex flex-wrap gap-1">
                 {!st.installed && (
                   <Button size="sm" variant="outline" loading={busyEngine === meta.id} onClick={() => installEngine(meta.id)}>
@@ -248,7 +253,10 @@ export default function DatabasesPage() {
                 <div key={db.id} className="flex items-center justify-between px-4 py-3">
                   <div>
                     <p className="font-medium text-sm">{db.db_name}</p>
-                    <p className="text-xs text-muted-foreground">{db.engine} · user: {db.db_user}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {db.engine} · user: {db.db_user}
+                      {enginePort(db.engine) ? ` · port ${enginePort(db.engine)}` : ''}
+                    </p>
                   </div>
                   <div className="flex gap-2 items-center">
                     <Badge variant={db.granted ? 'success' : 'warning'}>{db.granted ? 'Granted' : 'Pending'}</Badge>

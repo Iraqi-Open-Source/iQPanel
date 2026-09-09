@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../lib/auth-context.jsx';
@@ -6,9 +6,12 @@ import { api } from '../lib/api.js';
 import {
   Server, Globe, Database, Shield, Package, Clock, ScrollText,
   Settings, Users, FileText, Container, Code2,
-  ChevronLeft, ChevronRight, Moon, Sun, LogOut, Activity,
+  ChevronLeft, ChevronRight, Moon, Sun, Monitor, LogOut, Activity,
 } from 'lucide-react';
 import { cn } from '../lib/utils.js';
+import {
+  getStoredTheme, setStoredTheme, nextTheme, watchSystemTheme,
+} from '../lib/theme.js';
 import ServiceStatusChips from './ServiceStatus.jsx';
 
 const NAV = [
@@ -27,21 +30,33 @@ const NAV = [
   { to: '/settings',  icon: Settings,    label: 'Settings' },
 ];
 
+const THEME_OPTIONS = [
+  { id: 'light',  icon: Sun,     label: 'Light' },
+  { id: 'dark',   icon: Moon,    label: 'Dark' },
+  { id: 'system', icon: Monitor, label: 'System' },
+];
+
 export default function Layout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [collapsed, setCollapsed] = useState(false);
-  const [dark, setDark] = useState(() => document.documentElement.classList.contains('dark'));
+  const [theme, setTheme] = useState(getStoredTheme);
   const { data: services = [] } = useQuery({
     queryKey: ['services'],
     queryFn: () => api.get('/api/services'),
     refetchInterval: 15_000,
   });
 
-  function toggleDark() {
-    const next = !dark;
-    document.documentElement.classList.toggle('dark', next);
-    setDark(next);
+  useEffect(() => {
+    setStoredTheme(theme);
+    return watchSystemTheme(theme);
+  }, [theme]);
+
+  const currentTheme = THEME_OPTIONS.find((o) => o.id === theme) ?? THEME_OPTIONS[2];
+  const ThemeIcon = currentTheme.icon;
+
+  function cycleTheme() {
+    setTheme((current) => nextTheme(current));
   }
 
   async function handleLogout() {
@@ -84,13 +99,43 @@ export default function Layout() {
 
         {/* Footer */}
         <div className="border-t border-border p-2 space-y-1">
-          <button
-            onClick={toggleDark}
-            className="flex w-full items-center gap-3 px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent rounded-md"
-          >
-            {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-            {!collapsed && (dark ? 'Light mode' : 'Dark mode')}
-          </button>
+          {collapsed ? (
+            <button
+              type="button"
+              onClick={cycleTheme}
+              className="flex w-full items-center justify-center gap-3 px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent rounded-md"
+              title={`${currentTheme.label} theme`}
+              aria-label={`Theme: ${currentTheme.label}. Click to switch`}
+            >
+              <ThemeIcon className="h-4 w-4" aria-hidden="true" />
+            </button>
+          ) : (
+            <div role="radiogroup" aria-label="Theme" className="flex rounded-md border border-border p-0.5">
+              {THEME_OPTIONS.map(({ id, icon: Icon, label }) => {
+                const selected = theme === id;
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    aria-label={label}
+                    title={label}
+                    onClick={() => setTheme(id)}
+                    className={cn(
+                      'flex flex-1 items-center justify-center gap-1 rounded-sm px-1 py-1.5 text-[11px] font-medium transition-colors',
+                      selected
+                        ? 'bg-accent text-accent-foreground'
+                        : 'text-muted-foreground hover:bg-accent/60 hover:text-foreground',
+                    )}
+                  >
+                    <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
           <button
             onClick={handleLogout}
             className="flex w-full items-center gap-3 px-3 py-1.5 text-sm text-muted-foreground hover:bg-accent rounded-md"

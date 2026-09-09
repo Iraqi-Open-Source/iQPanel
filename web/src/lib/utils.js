@@ -23,6 +23,21 @@ export function timeAgo(iso) {
   return `${Math.floor(hr / 24)}d ago`;
 }
 
+export function sitePublicUrl(site) {
+  if (!site) return null;
+  const domain = String(site.domain ?? '').trim();
+  if (domain) {
+    if (/^https?:\/\//i.test(domain)) return domain;
+    const protocol = site.ssl_status === 'active' ? 'https' : 'http';
+    return `${protocol}://${domain}`;
+  }
+  if (site.port) {
+    const host = typeof window !== 'undefined' ? window.location.hostname : '127.0.0.1';
+    return `http://${host}:${site.port}`;
+  }
+  return null;
+}
+
 export function statusColor(status) {
   return {
     online:       'text-green-500',

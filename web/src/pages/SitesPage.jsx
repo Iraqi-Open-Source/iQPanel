@@ -1,16 +1,100 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api.js';
-import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card.jsx';
-import { buttonClassName } from '../components/ui/Button.jsx';
+import { Card, CardContent } from '../components/ui/Card.jsx';
+import Button, { buttonClassName } from '../components/ui/Button.jsx';
 import Badge from '../components/ui/Badge.jsx';
-import { Plus, Globe, Server } from 'lucide-react';
-import { timeAgo } from '../lib/utils.js';
+import { Plus, Globe, Server, ExternalLink, Copy, Check } from 'lucide-react';
+import { sitePublicUrl, timeAgo } from '../lib/utils.js';
 
 const TYPE_ICONS = {
   laravel: '🔺', php: '🐘', node: '🟢', static: '📄', docker: '🐳',
 };
+
+function CopyUrlButton({ url }) {
+  const [copied, setCopied] = useState(false);
+
+  async function copy(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(url);
+      } else {
+        const input = document.createElement('textarea');
+        input.value = url;
+        input.setAttribute('readonly', '');
+        input.style.position = 'fixed';
+        input.style.left = '-9999px';
+        document.body.appendChild(input);
+        input.select();
+        document.execCommand('copy');
+        input.remove();
+      }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {}
+  }
+
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      className="w-full"
+      onClick={copy}
+      aria-label={copied ? 'URL copied' : 'Copy URL'}
+    >
+      {copied
+        ? <Check className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+        : <Copy className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
+      {copied ? 'Copied' : 'Copy URL'}
+    </Button>
+  );
+}
+
+function SiteCard({ site }) {
+  const url = sitePublicUrl(site);
+
+  return (
+    <Card className="h-full transition-all hover:border-primary/40 hover:shadow-md">
+      <CardContent className="p-5 space-y-3">
+        <Link to={`/sites/${site.slug}`} className="block space-y-3 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="font-semibold">{TYPE_ICONS[site.type] ?? '🌐'} {site.name}</p>
+              <p className="text-xs text-muted-foreground">{site.slug}</p>
+            </div>
+            <Badge variant={site.status === 'online' ? 'success' : site.status === 'error' ? 'destructive' : 'secondary'}>
+              {site.status}
+            </Badge>
+          </div>
+          <div className="text-sm text-muted-foreground space-y-1">
+            <p className="flex items-center gap-1"><Globe className="h-3 w-3" aria-hidden="true" />{site.domain ?? `port ${site.port}`}</p>
+            <p>PHP {site.php_version} · {site.webserver}</p>
+          </div>
+          <p className="text-xs text-muted-foreground">{timeAgo(site.created_at)}</p>
+        </Link>
+        {url ? (
+          <div className="flex flex-col gap-2">
+            <a
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={url}
+              className={buttonClassName({ variant: 'outline', size: 'sm', className: 'w-full' })}
+            >
+              <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              Open in browser
+            </a>
+            <CopyUrlButton url={url} />
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function SitesPage() {
   const { data: sites = [], isLoading } = useQuery({
@@ -49,26 +133,7 @@ export default function SitesPage() {
       {sites.length > 0 && (
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {sites.map((site) => (
-          <Link key={site.id} to={`/sites/${site.slug}`} className="group block">
-            <Card className="h-full transition-all group-hover:border-primary/40 group-hover:shadow-md">
-              <CardContent className="p-5 space-y-3">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="font-semibold">{TYPE_ICONS[site.type] ?? '🌐'} {site.name}</p>
-                    <p className="text-xs text-muted-foreground">{site.slug}</p>
-                  </div>
-                  <Badge variant={site.status === 'online' ? 'success' : site.status === 'error' ? 'destructive' : 'secondary'}>
-                    {site.status}
-                  </Badge>
-                </div>
-                <div className="text-sm text-muted-foreground space-y-1">
-                  <p className="flex items-center gap-1"><Globe className="h-3 w-3" />{site.domain ?? `port ${site.port}`}</p>
-                  <p>PHP {site.php_version} · {site.webserver}</p>
-                </div>
-                <p className="text-xs text-muted-foreground">{timeAgo(site.created_at)}</p>
-              </CardContent>
-            </Card>
-          </Link>
+          <SiteCard key={site.id} site={site} />
         ))}
       </div>
       )}

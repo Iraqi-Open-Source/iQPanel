@@ -1,7 +1,13 @@
-data/
+# Runtime SQLite at the repo root only — do not ignore server/data/
+/data/
 node_modules/
+web/node_modules/
+web/dist/
 *.sqlite
-.worktrees/
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+.env
 .cursor/
 .opencode/
 .claude/

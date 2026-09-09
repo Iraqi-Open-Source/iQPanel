@@ -1,0 +1,20 @@
+[Unit]
+Description=iQPanel Background Worker
+After=network.target iqpanel-agent.service iqpanel.service
+Requires=iqpanel-agent.service
+
+[Service]
+Type=simple
+User=panel
+Group=panel
+WorkingDirectory=/opt/iqpanel
+EnvironmentFile=/etc/panel-agent/env
+ExecStart=/usr/bin/node /opt/iqpanel/server/worker.js
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=iqpanel-worker
+
+[Install]
+WantedBy=multi-user.target

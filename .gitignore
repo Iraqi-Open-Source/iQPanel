@@ -1,7 +1,12 @@
 data/
 node_modules/
+web/node_modules/
+web/dist/
 *.sqlite
-.worktrees/
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+.env
 .cursor/
 .opencode/
 .claude/

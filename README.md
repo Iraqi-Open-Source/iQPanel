@@ -1,146 +1,198 @@
 # iQPanel
 
-Open-source server control panel for Ubuntu. The unprivileged web API talks to a root Agent over a Unix socket.
+A Laravel-first Ubuntu server control panel. One command to install. Full browser control over PHP, Nginx, MySQL/MariaDB/PostgreSQL/Redis, SSL, Docker, firewall, cron, and logs. A five-step wizard to deploy any Laravel application.
 
-Licensed under the [MIT License](LICENSE).
+---
 
-## Run locally
-
-```bash
-npm start
-```
-
-Open `http://localhost:4173`. Data lives under `data/`, generated configs under `data/generated/`, and deploy/backup/install jobs retry through the SQLite queue.
+## Quickstart
 
 ```bash
-npm test
+# Install with default settings (localhost only, port 4173)
+curl -fsSL https://raw.githubusercontent.com/Iraqi-Open-Source/iQPanel/new/installer/install.sh | sudo bash
+
+# Expose on a public port
+curl -fsSL .../install.sh | sudo bash -s -- --expose-dashboard --dashboard-port=8080
+
+# Secure HTTPS via Let's Encrypt (recommended for production)
+curl -fsSL .../install.sh | sudo bash -s -- \
+  --dashboard-domain=panel.example.com \
+  --email=you@example.com
 ```
 
-Dashboard UI uses layered design tokens (`public/tokens.css`), shared components (`public/components.js`), and a light/dark theme toggle in the top bar.
-
-## Production install
-
-Supported hosts: Ubuntu **20.04**, **22.04**, and **24.04** (amd64 or arm64), with SSH and sudo.
-
-The installer is **minimal by default**: Node.js 20, the panel API, and the root Agent. Nginx, PHP, MySQL, Docker, and similar packages are installed later from the Dashboard.
-
-### 1. Install (no clone)
-
-On a new Ubuntu server:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Iraqi-Open-Source/iQPanel/main/installer/install.sh | sudo bash
+The installer prints:
+```
+══════════════════════════════════════════════════
+  iQPanel installed successfully
+══════════════════════════════════════════════════
+  Dashboard : http://YOUR_IP:8080
+  Port      : 8080
+  Password  : GeneratedOneTimePassword
+══════════════════════════════════════════════════
 ```
 
-The script downloads the full source tarball, then installs the panel. Save the **one-time admin password** printed at the end.
+Sign in with `admin@localhost` and the printed password.
 
-Optional full stack in the same command:
+### Installer flags
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/Iraqi-Open-Source/iQPanel/main/installer/install.sh | sudo bash -s -- --stack=lnmp
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--dashboard-port=N` | `4173` | Port the panel listens on |
+| `--expose-dashboard` | off | Bind to `0.0.0.0` instead of `127.0.0.1` |
+| `--dashboard-domain=DOMAIN` | — | Issue Let's Encrypt cert, proxy via Nginx |
+| `--email=EMAIL` | — | Email for Certbot registration |
+| `--stack=all\|lnmp\|llmp\|lamp` | none | Pre-install a LEMP/LAMP/LLMP stack |
+| `--channel=stable\|dev` | `stable` | Release channel |
+
+### Supported platforms
+- Ubuntu 22.04 / 24.04 / 26.04
+- amd64 and arm64
+
+---
+
+## Architecture
+
+```
+Browser ─── HTTPS ──► iqpanel.service  (panel user, port 4173)
+                            │
+                     iqpanel-worker.service (panel user, job queue)
+                            │
+                   Unix socket 0660 root:panel
+                            │
+                     iqpanel-agent.service  (root, NDJSON protocol)
+                            │
+                apt · systemd · nginx · php-fpm
+                mysql · psql · redis · docker
+                certbot · ufw · crontab · git
 ```
 
-To expose the dashboard publicly on a custom port without cloning the repository:
+Three systemd units. The API and worker never execute privileged code directly; every host mutation is a **named, typed action** dispatched to the agent.
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/Iraqi-Open-Source/iQPanel/main/installer/install.sh | sudo bash -s -- --expose-dashboard --dashboard-port=8080
-```
+---
 
-### 2. Install from a local checkout (optional)
+## Laravel Deploy Workflow
 
-```bash
-git clone https://github.com/Iraqi-Open-Source/iQPanel.git
-cd iQPanel
-sudo bash installer/install.sh
-```
+1. **Sites → New Site** — choose type `Laravel`
+2. Enter repo URL (`https://` or `git@`) — project name is derived from the basename
+3. Enter a domain or choose auto-port (8000–8999)
+4. Copy the Ed25519 deploy key → add it to your repo → click **Test connection** to verify
+5. Edit the deploy recipe (pre-populated with sensible Laravel defaults) → **Deploy Site**
 
-Or with a stack:
+The panel clones the repo, runs the recipe, writes an Nginx vhost rooted at `public/` with `try_files`, creates a dedicated PHP-FPM pool running as the site's own Unix user, and reloads Nginx with automatic `nginx -t` validation and rollback.
 
-```bash
-sudo bash installer/install.sh --stack=lnmp
-```
+Subsequent deploys run `artisan down → git pull → recipe steps → artisan up`. Full log is persisted. Rollback to any previous commit with one click.
 
-The dashboard is localhost-only by default. To expose it directly on the server's IP, opt in during installation:
+Add a GitHub webhook (`Settings → Webhooks`) pointing at `https://YOUR_PANEL/api/webhooks/github/SITE_ID` with the secret from the Webhook tab. Pushes to the deploy branch trigger automatic deploys with HMAC verification and delivery deduplication.
 
-```bash
-sudo bash installer/install.sh --expose-dashboard
-```
-
-The public dashboard listens on port `4173` by default. Change it with `--dashboard-port=PORT`:
-
-```bash
-sudo bash installer/install.sh --expose-dashboard --dashboard-port=8080
-```
-
-| Flag | Web | Database |
-|---|---|---|
-| `--stack=lnmp` | Nginx | MySQL |
-| `--stack=lamp` | Apache | MySQL |
-| `--stack=llmp` | Nginx | MariaDB |
-| `--stack=all` | Nginx + Apache (Apache then disabled) | MySQL + PostgreSQL |
-
-`--stack` also installs PHP 7.4–8.4, nvm, pyenv, Docker, Certbot, Composer, and enables UFW (SSH, 80, 443). Same as `PANEL_FULL=1` (defaults to `--stack=all`).
-
-### 3. Open the dashboard
-
-The panel binds to **localhost only** (`127.0.0.1:4173`) unless `--expose-dashboard` was used. From your machine:
-
-```bash
-ssh -L 4173:127.0.0.1:4173 user@your-server
-```
-
-Open `http://127.0.0.1:4173` and sign in with the installer password. Enable 2FA after login.
-
-With public exposure enabled, open `http://your-server-ip:4173` instead. Direct public exposure is HTTP-only; use an HTTPS reverse proxy for an internet-facing deployment.
-
-### 4. Finish setup in the Dashboard
-
-After a minimal install:
-
-- Install Nginx, Apache, MySQL, MariaDB, PostgreSQL, Redis, Docker, and other allowlisted packages
-- Install PHP 7.4–8.4 (FPM plus cli, mysql, pgsql, mbstring, xml, curl, gd, zip, bcmath, intl)
-- Start, stop, restart, enable, or disable systemd units in Services
-
-`PANEL_APPLY_SYSTEM=1` is set by the installer so those Dashboard actions run on the host. Local `npm start` leaves that off and writes files under `data/generated/`.
-
-### Layout
-
-```text
-/opt/iqpanel              application
-/var/lib/iqpanel          panel SQLite and generated config
-/var/www/sites/<slug>     site trees and deploy keys
-/run/iqpanel-agent.sock   Agent socket (token-authenticated)
-/etc/panel-agent/env      secret key, Agent token, admin password hash
-```
-
-Keep `PANEL_BIND=127.0.0.1` unless direct dashboard access is required. `PANEL_PORT` controls the dashboard port; both settings are stored in `/etc/panel-agent/env` and require restarting `iqpanel.service` after changes. The Agent TCP listener defaults to `127.0.0.1:4174` and should not be exposed publicly. Re-running the installer regenerates secrets in `/etc/panel-agent/env`.
+---
 
 ## Features
 
-- Sites CRUD with Nginx, Apache, or OpenLiteSpeed vhosts, per-site Unix users (`iqpanel-<slug>`), deploy keys, and Git clone/pull jobs
-- PHP, Node, Python, static, and Docker Compose site types
-- Selectable PHP/Node/Python runtime versions (`PANEL_PHP_VERSIONS`, `PANEL_NODE_VERSIONS`, `PANEL_PYTHON_VERSIONS`)
-- MySQL, MariaDB, and PostgreSQL create/attach with honest provisioning status
-- Local backups plus FTP and Telegram destinations (Telegram splits at 50MB)
-- Certbot and UFW actions generated locally, applied on the server when `PANEL_APPLY_SYSTEM=1`
-- Docker engine status, container actions, and compose up/down/build/pull
-- Web terminal scoped to the site user by default (escalate for admin sessions)
-- Cron jobs default to the site Unix user; systemd templates (Laravel queue/Horizon, FastAPI, Gunicorn, Celery, Python worker, Node, ASP.NET)
-- Multi-server registry (local agent plus remote host/token records)
-- Optional team login with owner/admin/operator/readonly roles, TOTP 2FA, re-auth for privileged actions, and an audit log (`PANEL_ADMIN_PASSWORD_HASH` migrates to the first owner)
-- Secure per-site file manager API for listing, reading, writing, creating, renaming, and deleting files under the site app root
-- WordPress install, staging, backup/restore, detection, and allowlisted WP-CLI operations when `wp` is installed
-- Feature and host capability inventory at `/api/system/features` and `/api/system/capabilities`
-- Configurable CPU, memory, and disk alert thresholds, with encrypted Discord webhook storage
-- Browser file manager/editor/upload workflow and an allowlisted package installer with queued jobs
-- Host systemd monitor (`/api/system/services`) with start/stop/restart/enable/disable from the Dashboard
-- On-demand PHP version installs from the Dashboard (`/api/system/php/install`)
-- Background CPU/memory/disk alert delivery to configured Discord and Telegram channels with cooldown deduplication
+### Server services
+- **PHP**: install/remove 7.4–8.5 via `ppa:ondrej/php`, set system default, per-site pool editing, `php.ini` editor
+- **Nginx**: install, status, `nginx -t` validation with rollback, global config view
+- **Databases**: MySQL, MariaDB, PostgreSQL, Redis — install, service control, create/drop databases and users. The create-database form only offers engines that are actually installed and running. Creating a database from the site page writes credentials directly to `.env`
+- **Docker**: container list/start/stop/restart/remove, image list, `docker compose up/down/build/pull`, container logs
+- **Services**: full systemd unit list with start/stop/restart/enable/disable and journald tail
+- **Firewall**: UFW rule management and a live `ss -ltnp` listener table
+- **Logs**: unified viewer (nginx, php-fpm, journald, panel) with live SSE tail, filter, download
+- **Cron**: managed cron block in system crontab (`# BEGIN iqpanel … # END iqpanel`)
+- **Metrics**: CPU/memory/disk/load from `/proc`, sparkline history in SQLite
 
-## Feature status
+### Site detail tabs
+| Tab | Content |
+|-----|---------|
+| Overview | Status, commit, paths, quick shortcuts |
+| Commands | Arbitrary shell scoped to site user (operator+, re-auth required) |
+| Environment | `.env` editor with save-on-write |
+| Deployments | History, status, one-click rollback |
+| Databases | Per-site DB management, credential injection into `.env` |
+| Files | Path-constrained file browser and editor |
+| Queues | `queue:work` / Horizon systemd units — create/start/stop/restart |
+| Scheduler | Laravel scheduler cron entry — enable with one click |
+| Cron | Per-site cron entries |
+| Logs | Site-specific access/error logs |
+| SSL | Certbot issue/renew for the site's domain |
+| Terminal | xterm.js WebSocket terminal running as the site user |
 
-iQPanel is not a drop-in clone of WPanel. Privileged work remains behind the root Agent. Phase 3E host integrations and Phase 3F dashboard workflows are implemented with generated-only local mode, allowlists, and audit logging.
+---
 
-The runtime feature catalog at `/api/system/features` is authoritative for optional integrations and reports unavailable host tools without pretending they are installed.
+## Security model
 
-Use `GET /api/system/features` to inspect feature availability at runtime. Planned OS integrations will be added only with explicit allowlists and installer verification; the panel will never expose arbitrary shell execution.
+### Authentication
+- Passwords hashed with `scrypt` and a per-user random salt (16 bytes hex)
+- TOTP (RFC 6238 / HMAC-SHA1) enforced at login if enabled
+- Sessions stored in SQLite; sessions survive restarts but are wiped on explicit logout
+- `SameSite=Strict` HttpOnly cookie + `X-CSRF-Token` double-submit for every mutating request
+- Login rate limiting: 5 failures locks the account for 15 minutes
+
+### Roles
+| Role | Scope |
+|------|-------|
+| `owner` | Everything, including user management |
+| `admin` | All server operations; cannot manage other owners |
+| `operator` | Site deploys, command execution (with re-auth), database management |
+| `readonly` | View dashboards and run allowlisted shortcuts |
+
+Re-authentication window (10 min) is required for: exec.run, env write, delete operations, and rollback.
+
+### Agent
+- Runs as root; listens on `/run/iqpanel-agent.sock` (`0660 root:panel`)
+- Every connection requires a 32-byte random token checked with `crypto.timingSafeEqual`
+- All actions are in a named allowlist in `agent/registry.js` — unknown action names are rejected before any argument parsing
+- Each action declares a timeout and output cap
+- `files.*` actions enforce a path-constraint: no traversal outside `/var/www/sites/<slug>/app`
+- `exec.run` runs under `runuser -u <site-user>` with a scrubbed environment
+
+### Webhooks
+- HMAC-SHA256 verified against the site's stored secret (constant-time comparison)
+- Delivery deduplication via `X-GitHub-Delivery` header stored in `webhook_deliveries`
+
+---
+
+## Agent action reference
+
+| Action | Description |
+|--------|-------------|
+| `pkg.install` / `pkg.remove` | Install/remove allowlisted apt packages |
+| `svc.*` | systemctl list/start/stop/restart/enable/disable/status/journal |
+| `nginx.test` / `nginx.reload` / `nginx.write_vhost` | Nginx management with rollback |
+| `php.install` / `php.remove` / `php.write_pool` | PHP version and pool management |
+| `db.engines` / `db.create` / `db.drop` / `db.dump` | Database CRUD |
+| `redis.*` | Redis status, flush, info |
+| `docker.*` | Container/image/compose management |
+| `ssl.issue` / `ssl.renew` / `ssl.revoke` | Certbot integration |
+| `fw.status` / `fw.allow` / `fw.deny` / `fw.listeners` | UFW and port listener |
+| `files.*` | Path-constrained file CRUD |
+| `git.keygen` / `git.clone` / `git.pull` / `git.reset` / `git.ls_remote` | Git operations |
+| `exec.run` / `exec.env_read` / `exec.env_write` | Site-scoped command execution |
+| `cron.list` / `cron.write` | Crontab management |
+| `users.create_site_user` / `users.remove_site_user` | Per-site Unix user lifecycle |
+| `metrics.snapshot` / `metrics.disk` / `metrics.processes` | System metrics |
+
+---
+
+## Self-update
+
+In the panel: **Settings → Updates → Check for updates → Apply update**.
+
+The update fetches the latest release tarball from GitHub, replaces `/opt/iqpanel/`, and restarts all three systemd units in sequence. The output is streamed to the browser via SSE.
+
+---
+
+## Development
+
+```bash
+# Backend (requires Node 24 + a running agent for full functionality)
+node server/main.js
+
+# Frontend dev server with proxy to backend
+cd web && npm install && npm run dev
+```
+
+The `web/` directory uses Vite with a proxy to `http://localhost:4173` so API calls work during development without CORS issues.
+
+---
+
+## License
+
+MIT

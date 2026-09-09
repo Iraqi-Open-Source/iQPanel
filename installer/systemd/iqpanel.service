@@ -1,0 +1,20 @@
+[Unit]
+Description=iQPanel HTTP API
+After=network.target iqpanel-agent.service
+Requires=iqpanel-agent.service
+
+[Service]
+Type=simple
+User=panel
+Group=panel
+WorkingDirectory=/opt/iqpanel
+EnvironmentFile=/etc/panel-agent/env
+ExecStart=/usr/bin/node /opt/iqpanel/server/main.js
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=iqpanel
+
+[Install]
+WantedBy=multi-user.target

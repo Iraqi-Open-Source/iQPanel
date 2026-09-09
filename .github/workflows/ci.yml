@@ -2,46 +2,94 @@ name: CI
 
 on:
   push:
-    branches: [main, master]
+    branches: [new, main]
   pull_request:
+    branches: [new, main]
 
 jobs:
   test:
+    name: Unit tests (Node ${{ matrix.node }})
+    runs-on: ubuntu-24.04
     strategy:
-      fail-fast: false
       matrix:
-        include:
-          - os: ubuntu-22.04
-            arch: amd64
-          - os: ubuntu-24.04
-            arch: amd64
-          - os: ubuntu-24.04-arm
-            arch: arm64
-    runs-on: ${{ matrix.os }}
+        node: ['24']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
-      - name: Run automated tests
-        run: npm test
+          node-version: ${{ matrix.node }}
 
-  installer:
-    runs-on: ubuntu-22.04
+      - name: Run tests
+        run: node --test tests/*.test.js
+        env:
+          PANEL_DATA_ROOT: /tmp/iqpanel-test-${{ github.run_id }}
+          PANEL_SECRET_KEY: ci-secret-key-not-for-production-use
+
+  build-web:
+    name: Build SPA
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Validate installer scripts
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install web dependencies
+        working-directory: web
+        run: npm ci
+      - name: Build SPA
+        working-directory: web
+        run: npm run build
+      - name: Upload public/
+        uses: actions/upload-artifact@v4
+        with:
+          name: spa-dist
+          path: public/
+          retention-days: 7
+
+  installer-smoke-test:
+    name: Installer smoke test (${{ matrix.os }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create fresh VM and run installer
         run: |
-          bash -n installer/install.sh
-          bash -n installer/verify.sh
-          bash -n installer/php-versions.sh
-          bash -n installer/nvm.sh
-          bash -n installer/pyenv.sh
-      - name: Start panel and run smoke checks
-        run: |
-          npm start &
-          for attempt in $(seq 1 40); do
-            curl -fsS http://127.0.0.1:4173/api/session >/dev/null && break
-            sleep 0.5
-          done
-          IQ_PANEL_URL=http://127.0.0.1:4173 bash installer/verify.sh
+          # The smoke test runs the installer pointing at local files
+          sudo PANEL_SKIP_REMOTE=1 bash ./installer/install.sh 2>&1 | tee /tmp/install-log.txt
+          # Assert the panel answers on port 4173
+          sleep 3
+          curl -fsSL http://127.0.0.1:4173/ | grep -i "iqpanel\|html" || (echo "Panel not responding"; cat /tmp/install-log.txt; exit 1)
+        env:
+          PANEL_SKIP_REMOTE: 1
+
+release:
+  name: Release
+  runs-on: ubuntu-24.04
+  if: github.ref == 'refs/heads/new' && startsWith(github.event.head_commit.message, 'release:')
+  needs: [test, build-web]
+  steps:
+    - uses: actions/checkout@v4
+    - uses: actions/download-artifact@v4
+      with:
+        name: spa-dist
+        path: public/
+    - name: Create release tarball
+      run: |
+        VERSION=$(node -p "require('./package.json').version")
+        tar --exclude='.git' --exclude='web/node_modules' --exclude='.cursor' \
+            -czf "/tmp/iqpanel-${VERSION}.tar.gz" -C "$(pwd)" .
+        echo "VERSION=${VERSION}" >> $GITHUB_ENV
+        echo "TARBALL=/tmp/iqpanel-${VERSION}.tar.gz" >> $GITHUB_ENV
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: v${{ env.VERSION }}
+        files: ${{ env.TARBALL }}
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

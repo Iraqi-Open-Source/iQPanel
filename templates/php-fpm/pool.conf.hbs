@@ -1,8 +1,0 @@
-[{{slug}}]
-user = {{run_as_user}}
-group = {{run_as_user}}
-listen = /run/php/{{slug}}.sock
-pm = dynamic
-pm.max_children = 5
-php_admin_value[memory_limit] = {{memory_limit}}
-php_admin_value[upload_max_filesize] = {{upload_max_filesize}}

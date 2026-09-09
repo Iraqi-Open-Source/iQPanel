@@ -187,7 +187,8 @@
     const online = server?.agent === "online";
     $("#sidebar-agent-label").textContent = online ? "Agent online" : "Agent offline";
     $("#sidebar-agent-meta").textContent = "Mode: " + (server?.agent_mode || "local");
-    $("#server-label").textContent = online ? "Connected" : "Disconnected";
+    const serverLabel = $("#server-label");
+    if (serverLabel) serverLabel.textContent = online ? "Connected" : "Disconnected";
     const dot = $("#sidebar-agent-dot");
     if (dot) dot.style.background = online ? "var(--lime)" : "var(--red)";
   };

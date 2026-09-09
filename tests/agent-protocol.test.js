@@ -3,7 +3,7 @@
  */
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer } from 'node:net';
+import net, { createServer } from 'node:net';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -48,7 +48,6 @@ async function makeAgent(token) {
     token,
     async send(msg) {
       return new Promise((resolve, reject) => {
-        const net = await import('node:net');
         const sock = net.createConnection(socketPath);
         let buf = '';
         sock.on('data', (chunk) => {

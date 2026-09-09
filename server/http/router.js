@@ -201,6 +201,8 @@ function enhanceRes(res) {
 // ──────────────────────────────────────────────────
 
 function serveStatic(dir, urlPath, req, res) {
+  if (urlPath === '/api' || urlPath.startsWith('/api/')) return false;
+
   let rel = urlPath === '/' ? 'index.html' : urlPath.slice(1);
   let abs = join(dir, rel);
 

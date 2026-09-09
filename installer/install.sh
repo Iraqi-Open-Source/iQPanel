@@ -156,6 +156,10 @@ fi
 # ──────────────────────────────────────────────────
 
 if ! resolve_local_source; then
+  if [[ "${PANEL_SKIP_REMOTE:-}" == "1" ]]; then
+    echo "PANEL_SKIP_REMOTE=1 but no local source tree was found." >&2
+    exit 1
+  fi
   fetch_remote_source
   trap cleanup_fetch EXIT
 fi
@@ -184,6 +188,23 @@ chown -R root:root "${APP_ROOT}"
 chmod -R go-w "${APP_ROOT}"
 chown -R panel:panel /var/lib/iqpanel /var/www/sites /var/log/panel /var/backups/panel
 
+[[ -f "${APP_ROOT}/server/data/schema.sql" && -f "${APP_ROOT}/server/data/db.js" ]] \
+  || { echo "Install tree is missing server/data (schema.sql / db.js)." >&2; exit 1; }
+
+# ──────────────────────────────────────────────────
+# Dashboard SPA
+# ──────────────────────────────────────────────────
+
+echo "==> Building dashboard..."
+(
+  cd "${APP_ROOT}/web"
+  npm install --no-audit --no-fund
+  npm run build
+)
+[[ -f "${APP_ROOT}/public/index.html" ]] || { echo "Dashboard build did not produce public/index.html." >&2; exit 1; }
+rm -rf "${APP_ROOT}/web/node_modules"
+chmod -R go-w "${APP_ROOT}/public"
+
 # ──────────────────────────────────────────────────
 # Secrets
 # ──────────────────────────────────────────────────
@@ -191,7 +212,7 @@ chown -R panel:panel /var/lib/iqpanel /var/www/sites /var/log/panel /var/backups
 SECRET_KEY="$(openssl rand -hex 32)"
 AGENT_TOKEN="$(openssl rand -hex 32)"
 ADMIN_PASSWORD="$(openssl rand -base64 18 | tr -d '/+=' | head -c 20)"
-ADMIN_HASH="$(node -e "
+ADMIN_HASH="$(/usr/bin/node -e "
 const c = require('node:crypto');
 const salt = c.randomBytes(16).toString('hex');
 const hash = c.scryptSync(process.argv[1], salt, 32).toString('hex');
@@ -223,7 +244,8 @@ chown root:panel /etc/panel-agent/env
 # Bootstrap admin user into SQLite
 # ──────────────────────────────────────────────────
 
-node "${APP_ROOT}/installer/setup-admin.js" "${ADMIN_HASH%%:*}" "${ADMIN_HASH##*:}"
+PANEL_DATA_ROOT=/var/lib/iqpanel PANEL_SECRET_KEY="${SECRET_KEY}" \
+  /usr/bin/node "${APP_ROOT}/installer/setup-admin.js" "${ADMIN_HASH%%:*}" "${ADMIN_HASH##*:}"
 
 # ──────────────────────────────────────────────────
 # Systemd services

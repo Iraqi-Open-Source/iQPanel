@@ -1,4 +1,5 @@
-data/
+# Runtime SQLite at the repo root only — do not ignore server/data/
+/data/
 node_modules/
 web/node_modules/
 web/dist/

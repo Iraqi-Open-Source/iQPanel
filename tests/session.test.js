@@ -14,6 +14,7 @@ process.env.PANEL_SECRET_KEY = 'test-secret-key-for-tests-only-32';
 const { hashPassword, verifyPassword, generateTotpSecret, verifyTotp, csrfToken, verifyCsrf,
         createSession, getSession, destroySession }
   = await import('../server/http/session.js');
+const { run } = await import('../server/data/db.js');
 
 describe('Password hashing', () => {
   test('verifies correct password', () => {
@@ -63,6 +64,8 @@ describe('CSRF', () => {
 
 describe('Sessions', () => {
   test('creates and retrieves session', () => {
+    run('INSERT INTO users (id,email,name,role,password_hash,password_salt,created_at) VALUES (?,?,?,?,?,?,?)',
+      ['user-123', 'a@test', 'A', 'operator', 'h', 's', new Date().toISOString()]);
     const token = createSession('user-123');
     const sess  = getSession(token);
     assert.ok(sess);
@@ -70,6 +73,8 @@ describe('Sessions', () => {
   });
 
   test('returns null after destroy', () => {
+    run('INSERT INTO users (id,email,name,role,password_hash,password_salt,created_at) VALUES (?,?,?,?,?,?,?)',
+      ['user-456', 'b@test', 'B', 'operator', 'h', 's', new Date().toISOString()]);
     const token = createSession('user-456');
     destroySession(token);
     assert.equal(getSession(token), null);

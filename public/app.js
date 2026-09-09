@@ -8,6 +8,10 @@
     siteFilter: "all",
     pendingSiteSlug: "",
     siteDetailSlug: "",
+    siteDetailTab: "overview",
+    siteDetailData: null,
+    siteFilesPath: ".",
+    siteSelectedFile: "",
     pendingDbSiteSlug: "",
     engines: null,
     servicesSiteSlug: "",
@@ -354,6 +358,7 @@
 
   const openSite = async (slug) => {
     state.siteDetailSlug = slug;
+    state.siteDetailTab = "overview";
     await showView("site-detail");
   };
 
@@ -369,7 +374,178 @@
       body.innerHTML = UI.emptyInline(error.message);
       return;
     }
-    body.innerHTML = UI.siteDetail(site, site.databases || []);
+    state.siteDetailData = site;
+    body.innerHTML = UI.siteDetail(site, { tab: state.siteDetailTab, dbs: site.databases || [] });
+    await renderSiteTab(state.siteDetailTab);
+  };
+
+  const renderSiteTab = async (tab) => {
+    const site = state.siteDetailData;
+    const container = $("#site-tab-content");
+    if (!site || !container) return;
+    state.siteDetailTab = tab;
+    if (tab !== "logs") stopSiteLogsStream();
+    $$("#site-detail-body [data-site-tab]").forEach((item) => item.classList.toggle("selected", item.dataset.siteTab === tab));
+    const paint = (markup) => { container.innerHTML = markup; };
+    switch (tab) {
+      case "overview":
+        paint(UI.siteTabOverview(site));
+        break;
+      case "databases":
+        paint(UI.siteTabDatabases(site, site.databases || []));
+        break;
+      case "files":
+        paint(UI.siteTabFiles());
+        await loadSiteFiles().catch((error) => { $("#site-files-list").innerHTML = UI.emptyInline(error.message); });
+        break;
+      case "php": {
+        paint(UI.siteTabPhp(site));
+        let php = null;
+        try { php = await api("/api/system/php"); } catch { php = null; }
+        container.innerHTML = UI.siteTabPhp(site, php);
+        break;
+      }
+      case "ssl":
+        paint(UI.siteTabSsl(site));
+        break;
+      case "cron": {
+        paint(UI.emptyInline("Loading tasks…"));
+        let jobs = [];
+        try {
+          const all = await api("/api/cron");
+          jobs = all.filter((job) => job.site_slug === site.slug);
+        } catch (error) {
+          paint(UI.emptyInline(error.message));
+          return;
+        }
+        paint(UI.siteTabCron(site, jobs));
+        break;
+      }
+      case "logs": {
+        paint(UI.emptyInline("Loading logs…"));
+        let files = [];
+        try {
+          files = await api(`/api/sites/${encodeURIComponent(site.slug)}/logs`);
+          if (!Array.isArray(files)) files = [];
+        } catch (error) {
+          paint(UI.emptyInline(error.message));
+          return;
+        }
+        paint(UI.siteTabLogs(site, files));
+        if (files.length) await loadSiteLogSnapshot();
+        break;
+      }
+      case "backups": {
+        paint(UI.emptyInline("Loading backups…"));
+        let items = [];
+        try {
+          const all = await api("/api/backups");
+          items = all.filter((item) => item.site_id === site.id);
+        } catch (error) {
+          paint(UI.emptyInline(error.message));
+          return;
+        }
+        paint(UI.siteTabBackups(site, items));
+        break;
+      }
+      default:
+        paint(UI.siteTabOverview(site));
+    }
+  };
+
+  const refreshSiteDetail = async () => {
+    if (state.currentView !== "site-detail" || !state.siteDetailSlug) return;
+    await loadSiteDetail();
+  };
+
+  const deleteDatabaseRecord = async (id) => {
+    if (!window.confirm("Delete this database? This drops the database and its user on the server.")) return false;
+    try {
+      await api(`/api/databases/${encodeURIComponent(id)}`, { method: "DELETE" });
+      showToast("Database dropped");
+    } catch (error) {
+      if (error.body?.hint && window.confirm(`${error.message}\n\nRemove the panel record anyway?`)) {
+        await api(`/api/databases/${encodeURIComponent(id)}?force=1`, { method: "DELETE" });
+        showToast("Database record removed");
+      } else {
+        showToast(error.message);
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const siteFilePathFor = (name) => state.siteFilesPath === "." ? name : `${state.siteFilesPath.replace(/\/$/, "")}/${name}`;
+
+  const renderSiteFiles = (entries) => {
+    $("#site-files-list").innerHTML = (entries || []).map((entry) => `<div class="data-row"><button type="button" class="text-button" data-site-file-name="${escapeHtml(entry.name)}" data-site-file-type="${escapeHtml(entry.type)}">${entry.type === "directory" ? "□" : "▤"} ${escapeHtml(entry.name)}</button><small>${escapeHtml(String(entry.size))} bytes</small><div class="row-actions"><button type="button" class="secondary-button" data-site-file-action="rename" data-site-file-name="${escapeHtml(entry.name)}">Rename</button>${entry.type === "file" ? `<button type="button" class="secondary-button" data-site-file-action="download" data-site-file-name="${escapeHtml(entry.name)}">Download</button>` : ""}<button type="button" class="secondary-button" data-site-file-action="delete" data-site-file-name="${escapeHtml(entry.name)}">Delete</button></div></div>`).join("") || UI.emptyRow("Directory is empty.");
+  };
+
+  const loadSiteFiles = async () => {
+    const site = state.siteDetailData;
+    if (!site) return;
+    const relative = $("#site-files-path")?.value || ".";
+    state.siteFilesPath = relative;
+    const result = await api(`/api/sites/${encodeURIComponent(site.slug)}/files?path=${encodeURIComponent(relative)}`);
+    renderSiteFiles(result.entries || []);
+  };
+
+  const openSiteFile = async (name, type) => {
+    const site = state.siteDetailData;
+    if (!site) return;
+    const filePath = siteFilePathFor(name);
+    if (type === "directory") {
+      $("#site-files-path").value = filePath;
+      await loadSiteFiles();
+      return;
+    }
+    const result = await api(`/api/sites/${encodeURIComponent(site.slug)}/files/content?path=${encodeURIComponent(filePath)}`);
+    state.siteSelectedFile = filePath;
+    $("#site-file-editor-title").textContent = filePath;
+    $("#site-file-editor").value = result.content || "";
+    $("#site-file-editor").disabled = false;
+    $("#site-file-save").disabled = false;
+  };
+
+  const loadSiteLogSnapshot = async () => {
+    stopSiteLogsStream();
+    const site = state.siteDetailData;
+    const file = $("#site-logs-file")?.value;
+    if (!site || !file) return;
+    const result = await api(`/api/sites/${encodeURIComponent(site.slug)}/logs/${encodeURIComponent(file)}`);
+    $("#site-logs-output").textContent = result.text || "";
+  };
+
+  const startSiteLogsStream = () => {
+    stopSiteLogsStream();
+    const site = state.siteDetailData;
+    const file = $("#site-logs-file")?.value;
+    if (!site || !file) return;
+    const source = new EventSource(`/api/sites/${encodeURIComponent(site.slug)}/logs/${encodeURIComponent(file)}/stream`);
+    state.logsStream = source;
+    source.onmessage = (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        const output = $("#site-logs-output");
+        if (!output) return;
+        output.textContent += payload.chunk || "";
+        output.scrollTop = output.scrollHeight;
+      } catch {
+        /* ignore malformed chunks */
+      }
+    };
+    source.onerror = () => {
+      stopSiteLogsStream();
+      const toggle = $("#site-logs-stream");
+      if (toggle) toggle.checked = false;
+    };
+  };
+
+  const stopSiteLogsStream = () => {
+    if (state.logsStream) {
+      state.logsStream.close();
+      state.logsStream = null;
+    }
   };
 
   const stopLogsStream = () => {
@@ -811,6 +987,16 @@
     });
 
     $("#site-detail-body")?.addEventListener("click", async (event) => {
+      const backBtn = event.target.closest("[data-view-link]");
+      if (backBtn) {
+        await showView(backBtn.dataset.viewLink);
+        return;
+      }
+      const tabBtn = event.target.closest("[data-site-tab]");
+      if (tabBtn) {
+        await renderSiteTab(tabBtn.dataset.siteTab);
+        return;
+      }
       const copyBtn = event.target.closest("[data-copy-path]");
       if (copyBtn) {
         try {
@@ -821,10 +1007,118 @@
         }
         return;
       }
+      const dbDump = event.target.closest("[data-db-dump]");
+      if (dbDump) {
+        await api(`/api/databases/${encodeURIComponent(dbDump.dataset.dbDump)}/dump`, { method: "POST" });
+        showToast("Database dump queued");
+        return;
+      }
+      const dbDelete = event.target.closest("[data-db-delete]");
+      if (dbDelete) {
+        if (await deleteDatabaseRecord(dbDelete.dataset.dbDelete)) await refreshSiteDetail();
+        return;
+      }
       const modalBtn = event.target.closest("[data-open-modal]");
       if (modalBtn) {
-        state.pendingDbSiteSlug = state.siteDetailSlug;
+        if (modalBtn.dataset.openModal === "database-modal") state.pendingDbSiteSlug = state.siteDetailSlug;
         openModal(modalBtn.dataset.openModal);
+        if (modalBtn.dataset.openModal === "cron-modal") {
+          const select = $("#cron-site-select");
+          if (select && [...select.options].some((option) => option.value === state.siteDetailSlug)) select.value = state.siteDetailSlug;
+        }
+        return;
+      }
+      const fileItem = event.target.closest("[data-site-file-name][data-site-file-type]");
+      if (fileItem) {
+        await openSiteFile(fileItem.dataset.siteFileName, fileItem.dataset.siteFileType).catch((error) => showToast(error.message));
+        return;
+      }
+      const fileAction = event.target.closest("[data-site-file-action]");
+      if (fileAction) {
+        const site = state.siteDetailData;
+        if (!site) return;
+        const filePath = siteFilePathFor(fileAction.dataset.siteFileName);
+        const action = fileAction.dataset.siteFileAction;
+        if (action === "download") {
+          window.open(`/api/sites/${encodeURIComponent(site.slug)}/files/download?path=${encodeURIComponent(filePath)}`, "_blank", "noopener");
+          return;
+        }
+        if (action === "delete") {
+          if (!window.confirm(`Delete ${filePath}?`)) return;
+          await api(`/api/sites/${encodeURIComponent(site.slug)}/files`, { method: "PUT", body: JSON.stringify({ action: "delete", path: filePath }) });
+          showToast("File deleted");
+          await loadSiteFiles();
+          return;
+        }
+        const nextName = window.prompt("New file or directory name", fileAction.dataset.siteFileName);
+        if (!nextName || /[\\/]/.test(nextName)) return;
+        await api(`/api/sites/${encodeURIComponent(site.slug)}/files`, { method: "PUT", body: JSON.stringify({ action: "rename", path: filePath, target: siteFilePathFor(nextName) }) });
+        showToast("Renamed");
+        await loadSiteFiles();
+        return;
+      }
+      const siteFilesRefresh = event.target.closest("[data-site-files-refresh]");
+      if (siteFilesRefresh) {
+        await loadSiteFiles().catch((error) => showToast(error.message));
+        return;
+      }
+      const sslBtn = event.target.closest("[data-site-ssl]");
+      if (sslBtn) {
+        const site = state.siteDetailData;
+        try {
+          const result = await api(`/api/sites/${encodeURIComponent(site.slug)}/ssl`, { method: "POST", body: "{}" });
+          showToast(result.applied ? "Certificate issued" : "Certificate requested");
+        } catch (error) {
+          showToast(error.message);
+        }
+        await refreshSiteDetail();
+        return;
+      }
+      const fwBtn = event.target.closest("[data-site-firewall]");
+      if (fwBtn) {
+        const site = state.siteDetailData;
+        try {
+          await api(`/api/sites/${encodeURIComponent(site.slug)}/firewall`, { method: "POST", body: JSON.stringify({ action: fwBtn.dataset.siteFirewall }) });
+          showToast(fwBtn.dataset.siteFirewall === "close" ? "Port closed" : "Port opened");
+        } catch (error) {
+          showToast(error.message);
+        }
+        await refreshSiteDetail();
+        return;
+      }
+      const cronToggle = event.target.closest("[data-site-cron-toggle]");
+      if (cronToggle) {
+        try {
+          const job = (await api("/api/cron")).find((item) => item.id === cronToggle.dataset.siteCronToggle);
+          if (job) await api(`/api/cron/${encodeURIComponent(job.id)}`, { method: "PATCH", body: JSON.stringify({ enabled: !job.enabled }) });
+        } catch (error) {
+          showToast(error.message);
+        }
+        await renderSiteTab("cron");
+        return;
+      }
+      const cronDelete = event.target.closest("[data-site-cron-delete]");
+      if (cronDelete) {
+        try {
+          await api(`/api/cron/${encodeURIComponent(cronDelete.dataset.siteCronDelete)}`, { method: "DELETE" });
+          showToast("Cron job deleted");
+        } catch (error) {
+          showToast(error.message);
+        }
+        await renderSiteTab("cron");
+        return;
+      }
+      const logsRefresh = event.target.closest("[data-site-logs-refresh]");
+      if (logsRefresh) {
+        await loadSiteLogSnapshot().catch((error) => showToast(error.message));
+        return;
+      }
+      const saveBtn = event.target.closest("#site-file-save");
+      if (saveBtn) {
+        const site = state.siteDetailData;
+        if (!site || !state.siteSelectedFile) return;
+        await api(`/api/sites/${encodeURIComponent(site.slug)}/files`, { method: "POST", body: JSON.stringify({ path: state.siteSelectedFile, content: $("#site-file-editor").value }) });
+        showToast("File saved");
         return;
       }
       const actionBtn = event.target.closest("[data-site-action]");
@@ -832,11 +1126,56 @@
       if (actionBtn.dataset.siteAction === "delete") {
         await runSiteAction("delete", actionBtn.dataset.slug);
         state.siteDetailSlug = "";
+        state.siteDetailData = null;
         await showView("sites");
         return;
       }
       await runSiteAction(actionBtn.dataset.siteAction, actionBtn.dataset.slug);
-      await loadSiteDetail();
+      await refreshSiteDetail();
+    });
+
+    $("#site-detail-body")?.addEventListener("change", async (event) => {
+      if (event.target.id === "site-files-path") {
+        await loadSiteFiles().catch((error) => showToast(error.message));
+        return;
+      }
+      if (event.target.id === "site-logs-file") {
+        await loadSiteLogSnapshot().catch((error) => showToast(error.message));
+        return;
+      }
+      if (event.target.id === "site-logs-stream") {
+        if (event.target.checked) startSiteLogsStream();
+        else await loadSiteLogSnapshot().catch(() => {});
+        return;
+      }
+      if (event.target.id === "site-files-upload") {
+        const file = event.target.files?.[0];
+        const site = state.siteDetailData;
+        if (!file || !site) return;
+        const path = state.siteFilesPath === "." ? file.name : `${state.siteFilesPath.replace(/\/$/, "")}/${file.name}`;
+        await api(`/api/sites/${encodeURIComponent(site.slug)}/files`, { method: "POST", body: JSON.stringify({ path, content: await file.text() }) });
+        event.target.value = "";
+        showToast("File uploaded");
+        await loadSiteFiles();
+      }
+    });
+
+    $("#site-detail-body")?.addEventListener("submit", async (event) => {
+      if (event.target.id !== "site-domain-form") return;
+      event.preventDefault();
+      const site = state.siteDetailData;
+      if (!site) return;
+      const form = new FormData(event.target);
+      const payload = {};
+      if (form.get("domain") !== null) payload.domain = String(form.get("domain")).trim();
+      if (form.get("port") !== null && form.get("port") !== "") payload.port = Number(form.get("port"));
+      try {
+        await api(`/api/sites/${encodeURIComponent(site.slug)}`, { method: "PATCH", body: JSON.stringify(payload) });
+        showToast("Domain saved and config applied");
+      } catch (error) {
+        showToast(error.message);
+      }
+      await refreshSiteDetail();
     });
 
     $("#services-site-select")?.addEventListener("change", async (event) => {

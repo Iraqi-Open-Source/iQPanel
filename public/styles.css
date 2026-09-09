@@ -92,3 +92,8 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 #php-version-input{width:90px}
 .full-site-card,.site-row{cursor:pointer}
 .full-site-card:hover,.site-row:hover{border-color:var(--cyan)}
+.site-tabs{margin:0 0 19px;border-bottom:1px solid var(--line);gap:6px}
+.site-tabs button{padding:10px 14px;border-radius:7px 7px 0 0;font-size:11px}
+.site-tabs button.selected{background:var(--surface);box-shadow:inset 0 -2px 0 var(--cyan)}
+#site-detail-body .panel{margin-bottom:19px}
+#site-file-editor{min-height:260px}

@@ -188,6 +188,7 @@ Goal: make the panel easier to use — real site detail view, truthful DB provis
 - [x] DB create modal: fetch engine availability, only offer installed engines, warn when inactive, inline field errors, copyable password field, surface `reason`
 - [x] Health panel shows all engines (mysql, mariadb, postgres, redis, docker, nginx, apache)
 - [x] UI consumes `/api/system/engines` (and features where useful)
+- [x] Plesk-style site-centric hub: site detail page now has tabs — Overview, Databases, Files, PHP, SSL / Domain, Cron, Logs, Backups — all scoped to the site (per-site file manager with editor/upload, per-site log viewer with live SSE stream, per-site cron list, per-site backup list + "Backup now", SSL certificate request, domain/port edit with apply, firewall open/close port)
 
 ### Tests
 

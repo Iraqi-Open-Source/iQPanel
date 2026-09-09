@@ -125,6 +125,15 @@ run(`CREATE TABLE IF NOT EXISTS webhook_deliveries (
   created_at TEXT NOT NULL
 )`);
 
+run(`CREATE TABLE IF NOT EXISTS panel_sessions (
+  token TEXT PRIMARY KEY,
+  user_id TEXT,
+  reauth_until INTEGER NOT NULL DEFAULT 0,
+  expires INTEGER NOT NULL
+)`);
+
+run(`DELETE FROM panel_sessions WHERE expires < ${Date.now()}`);
+
 function ensurePanelOwnership() {
   if (typeof process.getuid !== 'function' || process.getuid() !== 0) return;
   try {

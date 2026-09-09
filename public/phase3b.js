@@ -119,6 +119,12 @@
     renderDeploySettings().catch(() => {});
   };
 
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
-  else boot();
+  const schedule = () => {
+    const shell = document.getElementById('app-shell');
+    if (window.iqpanelAuthed || (shell && !shell.hidden)) boot();
+    else window.addEventListener('iqpanel:authed', boot, { once: true });
+  };
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', schedule);
+  else schedule();
 })();

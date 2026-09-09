@@ -8,7 +8,31 @@ const queue = require('./queue');
 const agentClient = require('./agent-client');
 
 const publicRoot = __dirname;
-const sessions = new Map();
+const sessions = (() => {
+  const cache = new Map();
+  return {
+    get(token) {
+      if (cache.has(token)) return cache.get(token);
+      const row = db.rows(`SELECT user_id, reauth_until, expires FROM panel_sessions WHERE token=${db.sql(token)} LIMIT 1`)[0];
+      if (!row) return undefined;
+      if (row.expires < Date.now()) {
+        this.delete(token);
+        return undefined;
+      }
+      const value = { userId: row.user_id, reauthUntil: row.reauth_until, expires: row.expires };
+      cache.set(token, value);
+      return value;
+    },
+    set(token, value) {
+      cache.set(token, value);
+      db.run(`INSERT OR REPLACE INTO panel_sessions (token, user_id, reauth_until, expires) VALUES (${db.sql(token)}, ${db.sql(value?.userId ?? null)}, ${Number(value?.reauthUntil || 0)}, ${Number(value?.expires || 0)})`);
+    },
+    delete(token) {
+      cache.delete(token);
+      db.run(`DELETE FROM panel_sessions WHERE token=${db.sql(token)}`);
+    },
+  };
+})();
 const loginAttempts = new Map();
 const requestContext = new AsyncLocalStorage();
 const now = () => new Date().toISOString();

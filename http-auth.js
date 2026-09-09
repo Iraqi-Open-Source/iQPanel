@@ -209,6 +209,8 @@ async function handleAuth(request, response, pathname) {
     }
     if (row?.totp_enabled) completeLogin(row, input);
     session.reauthUntil = Date.now() + 10 * 60 * 1000;
+    const token = cookieMap(request).iqpanel_session;
+    if (token) sessions.set(token, session);
     log('Re-authenticated', user?.email || 'panel');
     send(response, 200, { ok: true, reauth_until: new Date(session.reauthUntil).toISOString() });
     return true;

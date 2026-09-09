@@ -78,6 +78,8 @@
   const showApp = () => {
     $("#login-screen").hidden = true;
     $("#app-shell").hidden = false;
+    window.iqpanelAuthed = true;
+    window.dispatchEvent(new CustomEvent("iqpanel:authed"));
   };
 
   const typeLabel = UI.typeLabel;

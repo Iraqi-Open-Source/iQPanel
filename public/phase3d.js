@@ -91,6 +91,16 @@
   };
 
   const boot = () => {
+    const reauthModal = document.getElementById('reauth-modal');
+    if (reauthModal) {
+      new MutationObserver(() => {
+        if (reauthModal.hidden && pending.retry) {
+          const retry = pending.retry;
+          pending.retry = null;
+          retry.reject(new Error('Re-authentication cancelled'));
+        }
+      }).observe(reauthModal, { attributes: true, attributeFilter: ['hidden'] });
+    }
     document.getElementById('reauth-form')?.addEventListener('submit', async (event) => {
       event.preventDefault();
       const form = new FormData(event.currentTarget);

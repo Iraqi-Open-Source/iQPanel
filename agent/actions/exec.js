@@ -18,6 +18,11 @@ function siteUser(slug) {
   return `${prefix}${slug.slice(0, keep)}-${hash}`;
 }
 
+/** Relative to the site home. Absolute cd fails: /var/www/sites is 0750 panel. */
+export function buildExecScript(cmd) {
+  return `cd app && ${cmd}`;
+}
+
 export const run = {
   timeout: 300_000,
   validate({ slug, cmd }) {
@@ -26,24 +31,32 @@ export const run = {
     if (cmd.length > 4096) throw new Error('cmd too long');
   },
   async run({ slug, cmd, env: extraEnv = {} }, emit) {
-    const cwd = join(SITES_ROOT, slug, 'app');
+    const home = join(SITES_ROOT, slug);
     const user = siteUser(slug);
 
     const safeEnv = {
-      HOME: `/var/www/sites/${slug}`,
+      HOME: home,
       USER: user,
       LOGNAME: user,
-      PATH: '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/bin/composer',
+      PATH: '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
       SHELL: '/bin/bash',
+      COMPOSER_HOME: join(home, '.composer'),
       ...extraEnv,
     };
+
+    const script = buildExecScript(cmd);
 
     return new Promise((resolve, reject) => {
       let totalOutput = 0;
       let truncated = false;
 
-      const proc = spawn('runuser', ['-u', user, '--', '/bin/bash', '-c', cmd], {
-        cwd,
+      const proc = spawn('runuser', [
+        '-u', user, '--',
+        '/bin/bash', '--noprofile', '--norc', '-c', script,
+      ], {
+        // Root can enter 0750 homes; keep that cwd so `cd app` does not
+        // walk /var/www/sites as the unprivileged site user.
+        cwd: home,
         env: safeEnv,
       });
 
@@ -64,7 +77,8 @@ export const run = {
 
       proc.on('close', (code) => {
         emit?.('exit', null, { code });
-        resolve({ code, truncated });
+        if (code === 0) resolve({ code, truncated });
+        else reject(new Error(`Command exited ${code}: ${cmd}`));
       });
 
       proc.on('error', reject);

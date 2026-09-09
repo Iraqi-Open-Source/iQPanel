@@ -25,6 +25,9 @@ export const createSiteUser = {
   validate({ slug }) { validateSlug(slug); },
   async run({ slug }) {
     const user = siteUserName(slug);
+    mkdirSync(SITES_ROOT, { recursive: true });
+    try { chmodSync(SITES_ROOT, 0o755); } catch {}
+
     const home = join(SITES_ROOT, slug);
     const appDir = join(home, 'app');
     const sshDir = join(home, '.ssh');

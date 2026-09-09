@@ -1,5 +1,5 @@
 import { execFileSync, spawn } from 'node:child_process';
-import { writeFileSync, mkdirSync, chmodSync, existsSync } from 'node:fs';
+import { writeFileSync, mkdirSync, chmodSync, existsSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
 const SITES_ROOT = process.env.PANEL_SITES_ROOT ?? '/var/www/sites';
@@ -12,13 +12,13 @@ function gitEnv(slug) {
   const keyPath = siteKeyPath(slug);
   return {
     ...process.env,
-    GIT_SSH_COMMAND: `ssh -i ${keyPath} -o StrictHostKeyChecking=accept-new -o BatchMode=yes`,
+    GIT_SSH_COMMAND: `ssh -i ${keyPath} -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o BatchMode=yes`,
   };
 }
 
 function runGit(args, cwd, env, emit, timeout = 120_000) {
   return new Promise((resolve, reject) => {
-    const proc = spawn('git', args, { cwd, env });
+    const proc = spawn('git', args, { cwd: cwd || undefined, env });
     let out = '';
     proc.stdout.on('data', (d) => { out += d; emit?.('stdout', d.toString()); });
     proc.stderr.on('data', (d) => { out += d; emit?.('stderr', d.toString()); });
@@ -69,6 +69,12 @@ export const lsRemote = {
   },
 };
 
+function chownToSite(slug, path) {
+  try {
+    execFileSync('chown', ['-R', `--reference=${join(SITES_ROOT, slug)}`, path], { encoding: 'utf8' });
+  } catch {}
+}
+
 export const clone = {
   timeout: 300_000,
   validate({ slug, url }) {
@@ -77,9 +83,31 @@ export const clone = {
   },
   async run({ slug, url, branch = 'main' }, emit) {
     const dest = join(SITES_ROOT, slug, 'app');
+    const parent = join(SITES_ROOT, slug);
+    mkdirSync(parent, { recursive: true });
     const env = gitEnv(slug);
-    mkdirSync(dest, { recursive: true });
-    await runGit(['clone', '--depth=50', '--branch', branch, url, dest], null, env, emit, 300_000);
+
+    if (existsSync(join(dest, '.git'))) {
+      emit?.('stdout', 'Repository already cloned\n');
+      return { dest, already: true };
+    }
+
+    if (existsSync(dest) && readdirSync(dest).length > 0) {
+      throw new Error(`Destination ${dest} is not empty`);
+    }
+
+    const cloneInto = (extra) =>
+      runGit(['clone', '--depth=50', ...extra, url, dest], parent, env, emit, 300_000);
+
+    try {
+      await cloneInto(branch ? ['--branch', branch] : []);
+    } catch (e) {
+      try { rmSync(dest, { recursive: true, force: true }); } catch {}
+      if (!branch) throw e;
+      emit?.('stderr', `Clone of branch '${branch}' failed, retrying default branch\n`);
+      await cloneInto([]);
+    }
+    chownToSite(slug, dest);
     return { dest };
   },
 };
@@ -92,6 +120,7 @@ export const pull = {
     const env = gitEnv(slug);
     await runGit(['fetch', 'origin'], cwd, env, emit);
     await runGit(['reset', '--hard', `origin/${branch}`], cwd, env, emit);
+    chownToSite(slug, cwd);
     return { pulled: true };
   },
 };

@@ -75,7 +75,13 @@ export default function SiteDetailPage() {
           <Badge variant={site.status === 'online' ? 'success' : site.status === 'error' ? 'destructive' : 'secondary'}>
             {site.status}
           </Badge>
-          <Button size="sm" onClick={() => api.post(`/api/sites/${slug}/deploy`, {}).then(() => qc.invalidateQueries(['site', slug]))}>
+          <Button size="sm" onClick={() => {
+            api.post(`/api/sites/${slug}/deploy`, {}).then(() => {
+              qc.invalidateQueries(['site', slug]);
+              qc.invalidateQueries(['deployments', slug]);
+              navigate(`/sites/${slug}/deployments`);
+            }).catch((e) => alert(e.message));
+          }}>
             <RefreshCw className="h-3 w-3" /> Deploy
           </Button>
         </div>
@@ -314,10 +320,33 @@ function EnvTab({ site }) {
 /* ──────────────────────────────────────────────── */
 function DeploymentsTab({ site }) {
   const qc = useQueryClient();
+  const [openId, setOpenId] = useState(null);
+  const autoOpened = useRef(false);
+
   const { data: deploys = [] } = useQuery({
     queryKey: ['deployments', site.slug],
     queryFn:  () => api.get(`/api/sites/${site.slug}/deployments`),
-    refetchInterval: 5000,
+    refetchInterval: (q) => {
+      const rows = q.state.data ?? [];
+      return rows.some((d) => d.status === 'queued' || d.status === 'running') ? 1500 : 8000;
+    },
+  });
+
+  useEffect(() => {
+    if (autoOpened.current) return;
+    const live = deploys.find((d) => d.status === 'running' || d.status === 'queued')
+      ?? deploys.find((d) => d.status === 'failed');
+    if (live) { setOpenId(live.id); autoOpened.current = true; }
+  }, [deploys]);
+
+  const { data: detail } = useQuery({
+    queryKey: ['deployment-steps', openId],
+    queryFn:  () => api.get(`/api/deployments/${openId}/steps`),
+    enabled:  Boolean(openId),
+    refetchInterval: () => {
+      const d = deploys.find((x) => x.id === openId);
+      return d && (d.status === 'running' || d.status === 'queued') ? 800 : false;
+    },
   });
 
   async function rollback(id) {
@@ -333,27 +362,86 @@ function DeploymentsTab({ site }) {
       <CardContent>
         {deploys.length === 0 ? <p className="text-sm text-muted-foreground">No deployments yet.</p> : (
           <div className="divide-y divide-border">
-            {deploys.map((d) => (
-              <div key={d.id} className="flex items-center justify-between py-3">
-                <div className="text-sm space-y-0.5">
-                  <div className="flex items-center gap-2">
-                    <Badge variant={d.status === 'success' ? 'success' : d.status === 'failed' ? 'destructive' : 'secondary'}>{d.status}</Badge>
-                    <code className="text-xs">{d.commit_sha?.slice(0, 8) ?? '—'}</code>
-                    <span className="text-muted-foreground text-xs">{d.commit_msg?.slice(0, 60)}</span>
-                  </div>
-                  <p className="text-xs text-muted-foreground">{d.triggered_by} · {timeAgo(d.created_at)}</p>
+            {deploys.map((d) => {
+              const open = openId === d.id;
+              const steps = open && detail?.id === d.id ? detail.steps : (d.steps ?? []);
+              return (
+                <div key={d.id} className="py-3">
+                  <button
+                    type="button"
+                    onClick={() => setOpenId(open ? null : d.id)}
+                    className="flex w-full items-center justify-between gap-3 text-left"
+                  >
+                    <div className="text-sm space-y-0.5 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <ChevronRight className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${open ? 'rotate-90' : ''}`} />
+                        <Badge variant={d.status === 'success' ? 'success' : d.status === 'failed' ? 'destructive' : 'warning'}>{d.status}</Badge>
+                        <code className="text-xs">{d.commit_sha?.slice(0, 8) ?? '—'}</code>
+                        <span className="text-muted-foreground text-xs truncate">{d.commit_msg?.slice(0, 60)}</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground pl-6">{d.triggered_by} · {timeAgo(d.created_at)}</p>
+                    </div>
+                    {d.status === 'success' && d.commit_sha && (
+                      <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); rollback(d.id); }}>
+                        <RotateCcw className="h-3 w-3" /> Rollback
+                      </Button>
+                    )}
+                  </button>
+                  {open && (
+                    <div className="mt-3 ml-6 space-y-2">
+                      {steps.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">Waiting for steps…</p>
+                      ) : steps.map((s) => (
+                        <DeployStep key={s.id ?? s.position} step={s} />
+                      ))}
+                    </div>
+                  )}
                 </div>
-                {d.status === 'success' && d.commit_sha && (
-                  <Button size="sm" variant="outline" onClick={() => rollback(d.id)}>
-                    <RotateCcw className="h-3 w-3" /> Rollback
-                  </Button>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function stepBadge(status) {
+  if (status === 'success') return 'success';
+  if (status === 'failed') return 'destructive';
+  if (status === 'running') return 'warning';
+  return 'secondary';
+}
+
+function DeployStep({ step }) {
+  const [showOut, setShowOut] = useState(step.status === 'failed' || step.status === 'running');
+  useEffect(() => {
+    if (step.status === 'failed' || step.status === 'running') setShowOut(true);
+  }, [step.status]);
+
+  return (
+    <div className="rounded-md border border-border">
+      <button
+        type="button"
+        onClick={() => setShowOut((v) => !v)}
+        className="flex w-full items-center gap-2 px-3 py-2 text-left"
+      >
+        {step.status === 'running'
+          ? <Spinner size="sm" />
+          : step.status === 'success'
+            ? <CheckCircle className="h-3.5 w-3.5 text-green-600 shrink-0" />
+            : step.status === 'failed'
+              ? <AlertCircle className="h-3.5 w-3.5 text-destructive shrink-0" />
+              : <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
+        <span className="text-sm font-medium truncate flex-1">{step.name || step.cmd}</span>
+        <Badge variant={stepBadge(step.status)}>{step.status}</Badge>
+      </button>
+      {showOut && (
+        <pre className="max-h-72 overflow-auto border-t border-border bg-gray-950 p-3 text-xs font-mono text-green-400 whitespace-pre-wrap">
+          {step.cmd ? `$ ${step.cmd}\n` : ''}{step.output || (step.status === 'skipped' ? '(skipped — first deploy only)\n' : '(no output yet)\n')}
+        </pre>
+      )}
+    </div>
   );
 }
 

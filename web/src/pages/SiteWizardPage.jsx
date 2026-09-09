@@ -9,7 +9,7 @@ import { CheckCircle, Copy, ExternalLink, ChevronRight, ChevronLeft, GripVertica
 const STEPS = ['Type', 'Repository', 'Domain / Port', 'Deploy Key', 'Recipe'];
 
 const DEFAULT_STEPS_LARAVEL = [
-  { cmd: 'cp -n .env.example .env', first_only: 1, enabled: 1 },
+  { cmd: 'test -f .env || cp .env.example .env', first_only: 1, enabled: 1 },
   { cmd: 'composer install --no-dev --optimize-autoloader --no-interaction', first_only: 0, enabled: 1 },
   { cmd: 'php artisan key:generate', first_only: 1, enabled: 1 },
   { cmd: 'php artisan storage:link', first_only: 1, enabled: 1 },

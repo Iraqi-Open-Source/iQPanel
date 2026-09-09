@@ -47,6 +47,20 @@ CREATE TABLE IF NOT EXISTS deployments (
   finished_at  TEXT
 );
 
+CREATE TABLE IF NOT EXISTS deployment_steps (
+  id            TEXT    PRIMARY KEY,
+  deployment_id TEXT    NOT NULL REFERENCES deployments(id) ON DELETE CASCADE,
+  position      INTEGER NOT NULL DEFAULT 0,
+  name          TEXT    NOT NULL,
+  cmd           TEXT    NOT NULL DEFAULT '',
+  status        TEXT    NOT NULL DEFAULT 'pending'
+                        CHECK(status IN ('pending','running','success','failed','skipped')),
+  exit_code     INTEGER,
+  output        TEXT    NOT NULL DEFAULT '',
+  started_at    TEXT,
+  finished_at   TEXT
+);
+
 CREATE TABLE IF NOT EXISTS webhook_deliveries (
   id          TEXT PRIMARY KEY,
   site_id     TEXT NOT NULL REFERENCES sites(id) ON DELETE CASCADE,
@@ -176,8 +190,9 @@ CREATE TABLE IF NOT EXISTS metrics_history (
   ts         INTEGER NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_sessions_expires    ON sessions(expires);
-CREATE INDEX IF NOT EXISTS idx_jobs_status         ON jobs(status, run_after);
-CREATE INDEX IF NOT EXISTS idx_deployments_site    ON deployments(site_id, created_at);
-CREATE INDEX IF NOT EXISTS idx_audit_created       ON audit_log(created_at);
-CREATE INDEX IF NOT EXISTS idx_metrics_ts          ON metrics_history(ts);
+CREATE INDEX IF NOT EXISTS idx_sessions_expires       ON sessions(expires);
+CREATE INDEX IF NOT EXISTS idx_jobs_status            ON jobs(status, run_after);
+CREATE INDEX IF NOT EXISTS idx_deployments_site       ON deployments(site_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_deployment_steps_deploy ON deployment_steps(deployment_id, position);
+CREATE INDEX IF NOT EXISTS idx_audit_created          ON audit_log(created_at);
+CREATE INDEX IF NOT EXISTS idx_metrics_ts             ON metrics_history(ts);

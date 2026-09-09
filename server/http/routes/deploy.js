@@ -6,6 +6,7 @@ import { stream } from '../../agent-client.js';
 import { requireAuth } from '../middleware.js';
 import { rbac } from '../rbac.js';
 import { auditLog } from '../../domain/audit.js';
+import { attachStepSummaries, stepsForDeployment } from '../../domain/deploy-steps.js';
 
 function uuid()   { return randomBytes(16).toString('hex'); }
 function nowIso() { return new Date().toISOString(); }
@@ -19,7 +20,7 @@ export function registerDeploy(app) {
     const site = get('SELECT id FROM sites WHERE slug = ?', [req.params.slug]);
     if (!site) return res.status(404).json({ error: 'Site not found' });
     const deploys = query('SELECT * FROM deployments WHERE site_id = ? ORDER BY created_at DESC LIMIT 50', [site.id]);
-    res.json(deploys);
+    res.json(attachStepSummaries(deploys));
   });
 
   // POST /api/sites/:slug/deploy  – trigger deploy
@@ -83,6 +84,19 @@ export function registerDeploy(app) {
       }
     }, 500);
     res.on('close', () => clearInterval(interval));
+  });
+
+  // GET /api/deployments/:id/steps  – per-command output
+  app.get('/api/deployments/:id/steps', requireAuth, (req, res) => {
+    const deploy = get('SELECT * FROM deployments WHERE id = ?', [req.params.id]);
+    if (!deploy) return res.status(404).json({ error: 'Deployment not found' });
+    res.json({
+      id: deploy.id,
+      status: deploy.status,
+      commit_sha: deploy.commit_sha,
+      commit_msg: deploy.commit_msg,
+      steps: stepsForDeployment(deploy.id, { includeOutput: true }),
+    });
   });
 
   // POST /api/deployments/:id/rollback

@@ -23,9 +23,8 @@ export function mapEngineError(err, engine) {
   return err instanceof Error ? err : new Error(String(err));
 }
 
-export function mysqlCreateSql({ dbName, dbUser, dbPass }) {
+export function mysqlSetPasswordSql({ dbName, dbUser, dbPass }) {
   return [
-    `CREATE DATABASE IF NOT EXISTS \`${dbName}\``,
     `CREATE USER IF NOT EXISTS '${dbUser}'@'localhost' IDENTIFIED BY '${dbPass}'`,
     `CREATE USER IF NOT EXISTS '${dbUser}'@'127.0.0.1' IDENTIFIED BY '${dbPass}'`,
     `ALTER USER '${dbUser}'@'localhost' IDENTIFIED BY '${dbPass}'`,
@@ -34,6 +33,10 @@ export function mysqlCreateSql({ dbName, dbUser, dbPass }) {
     `GRANT ALL PRIVILEGES ON \`${dbName}\`.* TO '${dbUser}'@'127.0.0.1'`,
     'FLUSH PRIVILEGES',
   ].join('; ') + ';';
+}
+
+export function mysqlCreateSql({ dbName, dbUser, dbPass }) {
+  return `CREATE DATABASE IF NOT EXISTS \`${dbName}\`; ${mysqlSetPasswordSql({ dbName, dbUser, dbPass })}`;
 }
 
 export function postgresCreateSteps({ dbName, dbUser, dbPass }) {
@@ -168,6 +171,24 @@ export const create = {
       for (const step of postgresCreateSteps({ dbName, dbUser, dbPass: pw })) {
         psqlAdmin(step.sql, step.database);
       }
+    }
+    return { engine, dbName, dbUser, dbPass: pw };
+  },
+};
+
+export const setPassword = {
+  validate({ engine, dbName, dbUser, dbPass }) {
+    if (!SQL_ENGINES.has(engine)) throw new Error('Invalid engine');
+    if (!/^[a-z0-9_]{1,64}$/.test(dbName)) throw new Error('Invalid db name');
+    if (!/^[a-z0-9_]{1,32}$/.test(dbUser)) throw new Error('Invalid db user');
+    assertDbPass(dbPass);
+  },
+  async run({ engine, dbName, dbUser, dbPass }) {
+    const pw = dbPass == null || dbPass === '' ? randomPw() : dbPass;
+    if (engine === 'mysql' || engine === 'mariadb') {
+      mysqlExec(mysqlSetPasswordSql({ dbName, dbUser, dbPass: pw }), { engine });
+    } else {
+      psqlAdmin(`DO $do$ BEGIN IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${dbUser}') THEN CREATE ROLE "${dbUser}" LOGIN PASSWORD '${pw}'; ELSE ALTER ROLE "${dbUser}" WITH PASSWORD '${pw}'; END IF; END $do$;`);
     }
     return { engine, dbName, dbUser, dbPass: pw };
   },

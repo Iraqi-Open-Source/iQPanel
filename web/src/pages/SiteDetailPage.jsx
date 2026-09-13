@@ -670,7 +670,10 @@ function DatabasesTab({ site }) {
                 <div>
                   <span className="font-medium">{db.db_name}</span>
                   <span className="ml-2 text-muted-foreground text-xs">{db.engine} · {db.db_user}</span>
-                  <DbPasswordButton id={db.id} />
+                  <DbPasswordButton
+                    id={db.id}
+                    knownPassword={createdCreds?.db_name === db.db_name ? createdCreds.db_pass : undefined}
+                  />
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge variant={db.granted ? 'success' : 'warning'}>{db.granted ? 'Granted' : 'Pending'}</Badge>

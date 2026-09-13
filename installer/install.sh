@@ -211,6 +211,13 @@ chmod -R go-w "${APP_ROOT}/public"
 
 SECRET_KEY="$(openssl rand -hex 32)"
 AGENT_TOKEN="$(openssl rand -hex 32)"
+if [[ -f /etc/panel-agent/env ]]; then
+  # Keep existing field-encryption and agent tokens so stored DB passwords stay readable.
+  prev_secret="$(grep -E '^PANEL_SECRET_KEY=' /etc/panel-agent/env | cut -d= -f2- || true)"
+  prev_agent="$(grep -E '^PANEL_AGENT_TOKEN=' /etc/panel-agent/env | cut -d= -f2- || true)"
+  [[ -n "${prev_secret}" ]] && SECRET_KEY="${prev_secret}"
+  [[ -n "${prev_agent}" ]] && AGENT_TOKEN="${prev_agent}"
+fi
 ADMIN_PASSWORD="$(openssl rand -base64 18 | tr -d '/+=' | head -c 20)"
 ADMIN_HASH="$(/usr/bin/node -e "
 const c = require('node:crypto');

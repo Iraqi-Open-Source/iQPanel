@@ -120,10 +120,10 @@ function RedisPasswordButton() {
   );
 }
 
-export function DbPasswordButton({ id }) {
-  const [open, setOpen] = useState(false);
-  const [password, setPassword] = useState(null);
-  const [configured, setConfigured] = useState(null);
+export function DbPasswordButton({ id, knownPassword }) {
+  const [open, setOpen] = useState(Boolean(knownPassword));
+  const [password, setPassword] = useState(knownPassword ?? null);
+  const [configured, setConfigured] = useState(knownPassword ? true : null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -143,6 +143,7 @@ export function DbPasswordButton({ id }) {
       setConfigured(Boolean(r.configured));
       setPassword(r.password ?? '');
       setOpen(true);
+      if (r.rotated) setError('Password was reset so it can be stored again. Update any app .env that used the old one.');
     } catch (e) {
       setError(e.message);
     } finally {
@@ -182,19 +183,27 @@ export function HealthBadge({ result }) {
 export function CreatedCredsBanner({ creds, onDismiss, envError }) {
   if (!creds) return null;
   return (
-    <Card>
-      <CardContent className="space-y-2 p-4">
-        <div className="flex items-center justify-between gap-2">
-          <p className="text-sm font-medium">Database created</p>
-          <Button size="sm" variant="ghost" onClick={onDismiss}>Dismiss</Button>
+    <div className="rounded-xl border border-primary/40 bg-primary/5 p-4 space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-semibold">Database created — copy the password now</p>
+        {onDismiss ? <Button size="sm" variant="ghost" onClick={onDismiss}>Dismiss</Button> : null}
+      </div>
+      <div className="grid gap-2 text-sm sm:grid-cols-2">
+        <div>
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Database</p>
+          <code className="font-mono text-xs">{creds.db_name}</code>
         </div>
-        <p className="text-xs text-muted-foreground">
-          {creds.db_name} · user {creds.db_user}. Store the password now.
-        </p>
+        <div>
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Username</p>
+          <code className="font-mono text-xs">{creds.db_user}</code>
+        </div>
+      </div>
+      <div>
+        <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Password</p>
         <CopyableSecret value={creds.db_pass} />
-        {envError ? <p className="text-[11px] text-destructive">.env not updated: {envError}</p> : null}
-      </CardContent>
-    </Card>
+      </div>
+      {envError ? <p className="text-[11px] text-destructive">.env not updated: {envError}</p> : null}
+    </div>
   );
 }
 
@@ -342,6 +351,8 @@ export default function DatabasesPage() {
         </div>
       </div>
 
+      <CreatedCredsBanner creds={createdCreds} onDismiss={() => setCreatedCreds(null)} />
+
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {ENGINES.map((meta) => {
           const st = engineStatus(engines, meta.id);
@@ -394,8 +405,6 @@ export default function DatabasesPage() {
           );
         })}
       </div>
-
-      <CreatedCredsBanner creds={createdCreds} onDismiss={() => setCreatedCreds(null)} />
 
       {form === 'create' && (
         <Card>
@@ -490,7 +499,12 @@ export default function DatabasesPage() {
                       {db.engine} · user: {db.db_user}
                       {enginePort(db.engine) ? ` · port ${enginePort(db.engine)}` : ''}
                     </p>
-                    {canViewSecrets ? <DbPasswordButton id={db.id} /> : null}
+                    {canViewSecrets ? (
+                      <DbPasswordButton
+                        id={db.id}
+                        knownPassword={createdCreds?.db_name === db.db_name ? createdCreds.db_pass : undefined}
+                      />
+                    ) : null}
                   </div>
                   <div className="flex flex-wrap gap-2 items-center">
                     <Badge variant={db.granted ? 'success' : 'warning'}>{db.granted ? 'Granted' : 'Pending'}</Badge>

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   mapEngineError,
   mysqlCreateSql,
+  mysqlSetPasswordSql,
   postgresCreateSteps,
   postgresAdminArgs,
   postgresAdminCmd,
@@ -67,6 +68,12 @@ describe('SQL / command builders', () => {
     assert.match(sql, /ALTER USER 'shopu'@'localhost' IDENTIFIED BY 'pw1'/);
     assert.match(sql, /ALTER USER 'shopu'@'127\.0\.0\.1' IDENTIFIED BY 'pw1'/);
     assert.match(sql, /GRANT ALL PRIVILEGES ON `shop`\.\* TO 'shopu'@'localhost'/);
+  });
+
+  test('MySQL set-password SQL does not create the database', () => {
+    const sql = mysqlSetPasswordSql({ dbName: 'shop', dbUser: 'shopu', dbPass: 'pw1' });
+    assert.doesNotMatch(sql, /CREATE DATABASE/);
+    assert.match(sql, /ALTER USER 'shopu'@'127\.0\.0\.1' IDENTIFIED BY 'pw1'/);
   });
 
   test('Postgres SQL includes OWNER and GRANT ON SCHEMA public', () => {

@@ -70,6 +70,7 @@ export const registry = new Map([
   ['db.list',               dbact.list],
   ['db.engine_health',      dbact.engineHealth],
   ['db.health',             dbact.health],
+  ['db.set_password',       dbact.setPassword],
 
   // redis
   ['redis.status',          redis.status],

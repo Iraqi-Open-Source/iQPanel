@@ -3,7 +3,7 @@ import { query, get, run } from '../../data/db.js';
 import { invoke, stream } from '../../agent-client.js';
 import { requireAuth } from '../middleware.js';
 import { rbac } from '../rbac.js';
-import { encryptField, decryptField } from '../../domain/secrets.js';
+import { encryptField, tryDecryptField } from '../../domain/secrets.js';
 import { auditLog } from '../../domain/audit.js';
 import { resolveCreateCredentials, assertOptionalDbPass, reasonFromEngineError } from '../../domain/databases.js';
 
@@ -23,6 +23,19 @@ const HEALTH_ENGINES = new Set(['mysql', 'mariadb', 'postgres', 'redis']);
 function engineFail(res, e) {
   const reason = e?.reason ?? reasonFromEngineError(e?.message);
   return res.status(500).json({ error: e.message, ...(reason ? { reason } : {}) });
+}
+
+async function revealOrRotatePassword(db) {
+  const got = tryDecryptField(db.db_pass_enc);
+  if (got.ok && got.password) return { password: got.password, rotated: false };
+  if (got.reason === 'no_password' || !db.db_user) {
+    return { password: '', rotated: false, reason: 'no_password' };
+  }
+  const result = await invoke('db.set_password', {
+    engine: db.engine, dbName: db.db_name, dbUser: db.db_user,
+  });
+  run('UPDATE databases SET db_pass_enc = ? WHERE id = ?', [encryptField(result.dbPass), db.id]);
+  return { password: result.dbPass, rotated: true };
 }
 
 export function registerDatabases(app) {
@@ -127,27 +140,31 @@ export function registerDatabases(app) {
     res.json(dbs);
   });
 
-  app.get('/api/databases/:id/password', requireAuth, rbac('operator'), (req, res) => {
-    const db = get('SELECT id, db_pass_enc FROM databases WHERE id = ?', [req.params.id]);
+  app.get('/api/databases/:id/password', requireAuth, rbac('operator'), async (req, res) => {
+    const db = get('SELECT * FROM databases WHERE id = ?', [req.params.id]);
     if (!db) return res.status(404).json({ error: 'Database not found' });
-    const password = decryptField(db.db_pass_enc);
-    if (!password) return res.json({ configured: false, password: '' });
-    auditLog(req, 'db.password', req.params.id);
-    res.json({ configured: true, password });
+    try {
+      const revealed = await revealOrRotatePassword(db);
+      if (!revealed.password) return res.json({ configured: false, password: '', reason: revealed.reason ?? 'no_password' });
+      auditLog(req, 'db.password', req.params.id, revealed.rotated ? { rotated: true } : {});
+      res.json({ configured: true, password: revealed.password, rotated: revealed.rotated });
+    } catch (e) {
+      engineFail(res, e);
+    }
   });
 
   app.post('/api/databases/:id/health', requireAuth, async (req, res) => {
     const db = get('SELECT * FROM databases WHERE id = ?', [req.params.id]);
     if (!db) return res.status(404).json({ error: 'Database not found' });
-    const dbPass = decryptField(db.db_pass_enc);
-    if (!dbPass) {
-      return res.json({ ok: false, reason: 'no_password', error: 'No stored password; import one to test this database.' });
-    }
     try {
+      const revealed = await revealOrRotatePassword(db);
+      if (!revealed.password) {
+        return res.json({ ok: false, reason: 'no_password', error: 'No stored password; import one to test this database.' });
+      }
       const result = await invoke('db.health', {
-        engine: db.engine, dbName: db.db_name, dbUser: db.db_user, dbPass,
+        engine: db.engine, dbName: db.db_name, dbUser: db.db_user, dbPass: revealed.password,
       });
-      res.json(result);
+      res.json({ ...result, rotated: revealed.rotated });
     } catch (e) {
       res.status(503).json({ ok: false, error: e.message });
     }

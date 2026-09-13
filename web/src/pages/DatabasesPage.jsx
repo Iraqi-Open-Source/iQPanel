@@ -1,11 +1,13 @@
 import React, { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api.js';
+import { useAuth } from '../lib/auth-context.jsx';
 import { Card, CardContent } from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
 import Badge from '../components/ui/Badge.jsx';
 import Input from '../components/ui/Input.jsx';
 import Spinner from '../components/ui/Spinner.jsx';
+import { Copy, Check, Eye, EyeOff } from 'lucide-react';
 
 const ENGINES = [
   { id: 'mysql',    label: 'MySQL',      pkg: 'mysql-server',    unit: 'mysql.service',       port: 3306 },
@@ -26,8 +28,99 @@ function engineStatus(engines, id) {
   };
 }
 
+async function copyText(value) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value);
+    return;
+  }
+  const input = document.createElement('textarea');
+  input.value = value;
+  input.setAttribute('readonly', '');
+  input.style.position = 'fixed';
+  input.style.left = '-9999px';
+  document.body.appendChild(input);
+  input.select();
+  document.execCommand('copy');
+  input.remove();
+}
+
+function RedisPasswordButton() {
+  const [open, setOpen] = useState(false);
+  const [password, setPassword] = useState(null);
+  const [configured, setConfigured] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState('');
+
+  async function toggle() {
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    if (configured != null) {
+      setOpen(true);
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      const r = await api.get('/api/databases/engines/redis/password');
+      setConfigured(Boolean(r.configured));
+      setPassword(r.password ?? '');
+      setOpen(true);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function copy() {
+    if (!password) return;
+    try {
+      await copyText(password);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {}
+  }
+
+  return (
+    <div className="space-y-1">
+      <Button size="sm" variant="ghost" className="whitespace-nowrap" loading={loading} onClick={toggle}>
+        {open
+          ? <EyeOff className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          : <Eye className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
+        {open ? 'Hide password' : 'Show password'}
+      </Button>
+      {error ? <p className="text-[11px] text-destructive">{error}</p> : null}
+      {open && configured === false && (
+        <p className="text-[11px] text-muted-foreground">No password set</p>
+      )}
+      {open && configured && (
+        <div className="flex items-center gap-1">
+          <code className="min-w-0 flex-1 truncate rounded bg-muted px-1.5 py-1 font-mono text-[11px]">{password}</code>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="h-7 w-7 shrink-0 px-0"
+            onClick={copy}
+            aria-label={copied ? 'Password copied' : 'Copy password'}
+          >
+            {copied
+              ? <Check className="h-3.5 w-3.5" aria-hidden="true" />
+              : <Copy className="h-3.5 w-3.5" aria-hidden="true" />}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function DatabasesPage() {
   const qc = useQueryClient();
+  const { user } = useAuth();
+  const canViewRedisPassword = ['owner', 'admin', 'operator'].includes(user?.role);
   const { data: dbs = [], isLoading } = useQuery({
     queryKey: ['databases'],
     queryFn:  () => api.get('/api/databases'),
@@ -168,6 +261,9 @@ export default function DatabasesPage() {
                   </>
                 )}
               </div>
+              {meta.id === 'redis' && st.installed && canViewRedisPassword && (
+                <RedisPasswordButton />
+              )}
             </div>
           );
         })}

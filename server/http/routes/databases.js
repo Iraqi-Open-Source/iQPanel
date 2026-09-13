@@ -4,6 +4,7 @@ import { invoke, stream } from '../../agent-client.js';
 import { requireAuth } from '../middleware.js';
 import { rbac } from '../rbac.js';
 import { encryptField } from '../../domain/secrets.js';
+import { auditLog } from '../../domain/audit.js';
 
 function uuid()   { return randomBytes(16).toString('hex'); }
 function nowIso() { return new Date().toISOString(); }
@@ -19,6 +20,16 @@ export function registerDatabases(app) {
   app.get('/api/databases/engines', requireAuth, async (req, res) => {
     try { res.json(await invoke('db.engines')); }
     catch (e) { res.status(503).json({ error: e.message }); }
+  });
+
+  app.get('/api/databases/engines/redis/password', requireAuth, rbac('operator'), async (req, res) => {
+    try {
+      const result = await invoke('redis.password');
+      auditLog(req, 'redis.password', 'redis');
+      res.json(result);
+    } catch (e) {
+      res.status(503).json({ error: e.message });
+    }
   });
 
   app.post('/api/databases/engines/:engine/install', requireAuth, rbac('admin'), async (req, res) => {

@@ -73,6 +73,7 @@ export const registry = new Map([
   ['redis.status',          redis.status],
   ['redis.flush',           redis.flush],
   ['redis.info',            redis.info],
+  ['redis.password',        redis.password],
 
   // docker
   ['docker.status',         docker.status],

@@ -9,6 +9,9 @@ import Badge from '../components/ui/Badge.jsx';
 import Input from '../components/ui/Input.jsx';
 import Spinner from '../components/ui/Spinner.jsx';
 import { formatBytes, timeAgo } from '../lib/utils.js';
+import SiteAccessFields, {
+  accessPayload, installedPhpVersions, validateAccess,
+} from '../components/SiteAccessFields.jsx';
 import {
   Play, RefreshCw, ArrowLeft, Copy, Terminal, FileText,
   Database, Clock, Shield, Archive, Globe, AlertCircle,
@@ -17,6 +20,7 @@ import {
 
 const TABS = [
   { id: 'overview',    label: 'Overview' },
+  { id: 'settings',    label: 'Settings' },
   { id: 'commands',    label: 'Commands' },
   { id: 'env',         label: 'Environment' },
   { id: 'deployments', label: 'Deployments' },
@@ -105,6 +109,7 @@ export default function SiteDetailPage() {
 
       {/* Tab content */}
       {activeTab === 'overview'    && <OverviewTab    site={site} />}
+      {activeTab === 'settings'    && <SettingsTab    site={site} />}
       {activeTab === 'commands'    && <CommandsTab    site={site} />}
       {activeTab === 'env'         && <EnvTab         site={site} />}
       {activeTab === 'deployments' && <DeploymentsTab site={site} />}
@@ -143,7 +148,7 @@ function OverviewTab({ site }) {
       <Card>
         <CardHeader><CardTitle className="text-base">Site Info</CardTitle></CardHeader>
         <CardContent className="space-y-2 text-sm">
-          <Row label="Domain/Port"  value={site.domain ?? `Port ${site.port}`} />
+          <Row label="Domain/Port"  value={site.domain ?? (site.port ? `Port ${site.port}` : '—')} />
           <Row label="PHP version"  value={`PHP ${site.php_version}`} />
           <Row label="Web server"   value={site.webserver} />
           <Row label="SSL"          value={site.ssl_status} />
@@ -189,6 +194,81 @@ function OverviewTab({ site }) {
         </Card>
       )}
     </div>
+  );
+}
+
+/* ──────────────────────────────────────────────── */
+/* Settings                                         */
+/* ──────────────────────────────────────────────── */
+function SettingsTab({ site }) {
+  const qc = useQueryClient();
+  const showPhp = site.type === 'laravel' || site.type === 'php';
+  const { data: installed = {} } = useQuery({
+    queryKey: ['php-versions'],
+    queryFn: () => api.get('/api/php/versions'),
+  });
+  const phpOptions = installedPhpVersions(installed, site.php_version);
+
+  const [phpVersion, setPhpVersion] = useState(site.php_version);
+  const [usePort, setUsePort] = useState(!site.domain);
+  const [domain, setDomain] = useState(site.domain ?? '');
+  const [listenPort, setListenPort] = useState(site.port != null ? String(site.port) : '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    setPhpVersion(site.php_version);
+    setUsePort(!site.domain);
+    setDomain(site.domain ?? '');
+    setListenPort(site.port != null ? String(site.port) : '');
+  }, [site.id, site.php_version, site.domain, site.port]);
+
+  const domainChanging = Boolean(site.ssl_status === 'active' && site.domain && (
+    usePort || String(domain).trim() !== site.domain
+  ));
+
+  async function save() {
+    const accessError = validateAccess({ usePort, domain, port: listenPort });
+    if (accessError) { setError(accessError); return; }
+    if (showPhp && !phpOptions.length) { setError('Install a PHP version first'); return; }
+    setSaving(true); setError(''); setSaved(false);
+    try {
+      await api.patch(`/api/sites/${site.slug}`, accessPayload({
+        phpVersion, usePort, domain, port: listenPort,
+      }));
+      qc.invalidateQueries(['site', site.slug]);
+      setSaved(true);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card className="max-w-xl">
+      <CardHeader><CardTitle className="text-base">Site settings</CardTitle></CardHeader>
+      <CardContent className="space-y-4">
+        <SiteAccessFields
+          phpVersion={phpVersion}
+          onPhpVersion={setPhpVersion}
+          phpOptions={phpOptions}
+          showPhp={showPhp}
+          showAccess
+          usePort={usePort}
+          onUsePort={setUsePort}
+          domain={domain}
+          onDomain={setDomain}
+          port={listenPort}
+          onPort={setListenPort}
+          sslWarning={domainChanging}
+        />
+        {error && <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}
+        {saved && !error && <p className="text-sm text-green-600">Settings saved. Nginx and PHP-FPM were updated.</p>}
+        <Button onClick={save} loading={saving}>Save</Button>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -843,7 +923,11 @@ function SSLTab({ site }) {
       <CardHeader><CardTitle className="text-base">SSL Certificate</CardTitle></CardHeader>
       <CardContent className="space-y-4">
         {!site.domain ? (
-          <p className="text-sm text-muted-foreground">Set a domain on this site to issue an SSL certificate.</p>
+          <p className="text-sm text-muted-foreground">
+            Set a domain in{' '}
+            <Link to={`/sites/${site.slug}/settings`} className="text-primary hover:underline">Settings</Link>
+            {' '}to issue an SSL certificate.
+          </p>
         ) : (
           <>
             <div className="flex items-center gap-2">

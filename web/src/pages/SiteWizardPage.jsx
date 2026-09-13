@@ -1,9 +1,12 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api.js';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card.jsx';
 import Button from '../components/ui/Button.jsx';
 import Input from '../components/ui/Input.jsx';
+import SiteAccessFields, {
+  accessPayload, installedPhpVersions, validateAccess,
+} from '../components/SiteAccessFields.jsx';
 import { CheckCircle, Copy, ExternalLink, ChevronRight, ChevronLeft, GripVertical, Plus, Trash2 } from 'lucide-react';
 
 const STEPS = ['Type', 'Repository', 'Domain / Port', 'Deploy Key', 'Recipe'];
@@ -42,8 +45,21 @@ export default function SiteWizardPage() {
   const [name,       setName]       = useState('');
   const [domain,     setDomain]     = useState('');
   const [usePort,    setUsePort]    = useState(false);
+  const [listenPort, setListenPort] = useState('');
   const [phpVersion, setPhpVersion] = useState('8.3');
+  const [phpInstalled, setPhpInstalled] = useState({});
   const [deploySteps, setDeploySteps] = useState(DEFAULT_STEPS_LARAVEL);
+
+  const showPhp = type === 'laravel' || type === 'php';
+  const phpOptions = installedPhpVersions(phpInstalled);
+
+  useEffect(() => {
+    api.get('/api/php/versions').then((installed) => {
+      setPhpInstalled(installed ?? {});
+      const versions = installedPhpVersions(installed ?? {});
+      if (versions.length && !versions.includes(phpVersion)) setPhpVersion(versions.includes('8.3') ? '8.3' : versions[0]);
+    }).catch(() => setPhpInstalled({}));
+  }, []);
 
   // Created site info
   const [site,      setSite]      = useState(null);
@@ -64,11 +80,10 @@ export default function SiteWizardPage() {
   async function createSite() {
     setLoading(true); setError('');
     try {
-      const s = await api.post('/api/sites', {
-        name, type, repo_url: repoUrl,
-        domain: usePort ? null : domain || null,
-        php_version: phpVersion,
-      });
+      const access = accessPayload({ phpVersion, usePort, domain, port: listenPort });
+      const s = site
+        ? await api.patch(`/api/sites/${site.slug}`, access)
+        : await api.post('/api/sites', { name, type, repo_url: repoUrl, ...access });
       setSite(s);
     } catch (e) {
       setError(e.message);
@@ -109,8 +124,11 @@ export default function SiteWizardPage() {
     setError('');
     if (step === 1) {
       if (!name) { setError('Name required'); return; }
+      if (showPhp && !phpOptions.length) { setError('Install a PHP version before creating this site'); return; }
     }
     if (step === 2) {
+      const accessError = validateAccess({ usePort, domain, port: listenPort });
+      if (accessError) { setError(accessError); return; }
       const ok = await createSite();
       if (!ok) return;
     }
@@ -183,50 +201,38 @@ export default function SiteWizardPage() {
                 <label className="text-sm font-medium">Project name</label>
                 <Input placeholder="my-laravel-app" value={name} onChange={(e) => setName(e.target.value)} />
               </div>
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium">PHP Version</label>
-                <select
-                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                  value={phpVersion}
-                  onChange={(e) => setPhpVersion(e.target.value)}
-                >
-                  {['7.4','8.0','8.1','8.2','8.3','8.4','8.5'].map((v) => (
-                    <option key={v} value={v}>PHP {v}</option>
-                  ))}
-                </select>
-              </div>
+              {showPhp && (
+                <SiteAccessFields
+                  phpVersion={phpVersion}
+                  onPhpVersion={setPhpVersion}
+                  phpOptions={phpOptions}
+                  showPhp
+                  showAccess={false}
+                  usePort={usePort}
+                  onUsePort={setUsePort}
+                  domain={domain}
+                  onDomain={setDomain}
+                  port={listenPort}
+                  onPort={setListenPort}
+                />
+              )}
             </div>
           )}
 
           {/* Step 2: Domain / Port */}
           {step === 2 && (
-            <div className="space-y-4">
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setUsePort(false)}
-                  className={`flex-1 rounded-lg border p-3 text-sm text-left transition-colors ${!usePort ? 'border-primary bg-primary/5' : 'border-border'}`}
-                >
-                  <p className="font-semibold">Domain</p>
-                  <p className="text-xs text-muted-foreground">e.g. myapp.example.com</p>
-                </button>
-                <button
-                  onClick={() => setUsePort(true)}
-                  className={`flex-1 rounded-lg border p-3 text-sm text-left transition-colors ${usePort ? 'border-primary bg-primary/5' : 'border-border'}`}
-                >
-                  <p className="font-semibold">Auto port</p>
-                  <p className="text-xs text-muted-foreground">Allocate 8000–8999</p>
-                </button>
-              </div>
-              {!usePort && (
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium">Domain</label>
-                  <Input placeholder="myapp.example.com" value={domain} onChange={(e) => setDomain(e.target.value)} />
-                </div>
-              )}
-              <p className="text-xs text-muted-foreground">
-                {usePort ? 'A free port in range 8000–8999 will be automatically assigned.' : 'Point your DNS A record to this server before issuing SSL.'}
-              </p>
-            </div>
+            <SiteAccessFields
+              phpVersion={phpVersion}
+              onPhpVersion={setPhpVersion}
+              phpOptions={phpOptions}
+              showPhp={false}
+              usePort={usePort}
+              onUsePort={setUsePort}
+              domain={domain}
+              onDomain={setDomain}
+              port={listenPort}
+              onPort={setListenPort}
+            />
           )}
 
           {/* Step 3: Deploy Key */}

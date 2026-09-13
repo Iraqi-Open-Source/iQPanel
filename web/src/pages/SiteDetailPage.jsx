@@ -17,6 +17,7 @@ import {
   Database, Clock, Shield, Archive, Globe, AlertCircle,
   CheckCircle, ChevronRight, Settings, RotateCcw,
 } from 'lucide-react';
+import { CreatedCredsBanner, DbPasswordButton, HealthBadge } from './DatabasesPage.jsx';
 
 const TABS = [
   { id: 'overview',    label: 'Overview' },
@@ -581,17 +582,40 @@ function DatabasesTab({ site }) {
   const [engine, setEngine] = useState('mysql');
   const [dbName, setDbName] = useState('');
   const [dbUser, setDbUser] = useState('');
+  const [dbPass, setDbPass] = useState('');
   const [loading, setLoading] = useState(false);
+  const [createdCreds, setCreatedCreds] = useState(null);
+  const [envError, setEnvError] = useState('');
+  const [dbHealth, setDbHealth] = useState({});
   const qc = useQueryClient();
 
   async function create() {
     setLoading(true);
     try {
-      await api.post('/api/databases', { site_slug: site.slug, engine, db_name: dbName, db_user: dbUser, inject_env: true });
+      const body = { site_slug: site.slug, engine, db_name: dbName, inject_env: true };
+      if (dbUser.trim()) body.db_user = dbUser.trim();
+      if (dbPass) body.db_pass = dbPass;
+      const r = await api.post('/api/databases', body);
       qc.invalidateQueries(['site-dbs', site.slug]);
+      qc.invalidateQueries(['databases']);
+      setCreatedCreds({ db_name: r.db_name, db_user: r.db_user, db_pass: r.db_pass });
+      setEnvError(r.env_error || '');
       setShowForm(false);
+      setDbName('');
+      setDbUser('');
+      setDbPass('');
     } catch (e) { alert(e.message); }
     finally { setLoading(false); }
+  }
+
+  async function testDbHealth(id) {
+    setDbHealth((h) => ({ ...h, [id]: { loading: true } }));
+    try {
+      const r = await api.post(`/api/databases/${id}/health`, {});
+      setDbHealth((h) => ({ ...h, [id]: { ok: Boolean(r.ok), error: r.error } }));
+    } catch (e) {
+      setDbHealth((h) => ({ ...h, [id]: { ok: false, error: e.message } }));
+    }
   }
 
   return (
@@ -605,9 +629,14 @@ function DatabasesTab({ site }) {
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        <CreatedCredsBanner
+          creds={createdCreds}
+          envError={envError}
+          onDismiss={() => { setCreatedCreds(null); setEnvError(''); }}
+        />
         {showForm && (
           <div className="rounded-lg border border-border p-4 space-y-3">
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               <div className="space-y-1">
                 <label className="text-xs font-medium">Engine</label>
                 <select className="h-8 w-full rounded border border-input bg-transparent text-sm px-2" value={engine} onChange={(e) => setEngine(e.target.value)}>
@@ -623,22 +652,33 @@ function DatabasesTab({ site }) {
               </div>
               <div className="space-y-1">
                 <label className="text-xs font-medium">Username</label>
-                <Input className="h-8 text-xs" value={dbUser} onChange={(e) => setDbUser(e.target.value)} placeholder="myapp_user" />
+                <Input className="h-8 text-xs" value={dbUser} onChange={(e) => setDbUser(e.target.value)} placeholder="defaults to database name" />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium">Password</label>
+                <Input className="h-8 text-xs" type="password" value={dbPass} onChange={(e) => setDbPass(e.target.value)} placeholder="auto-generated" autoComplete="new-password" />
               </div>
             </div>
-            <p className="text-xs text-muted-foreground">Credentials will be injected into .env automatically.</p>
+            <p className="text-xs text-muted-foreground">Leave user and password empty to use Plesk-style defaults. Credentials are injected into .env.</p>
             <Button size="sm" onClick={create} loading={loading} disabled={!engine || !dbName}>Create database</Button>
           </div>
         )}
         {dbs.length === 0 ? <p className="text-sm text-muted-foreground">No databases yet.</p> : (
           <div className="divide-y divide-border">
             {dbs.map((db) => (
-              <div key={db.id} className="py-2 text-sm flex items-center justify-between">
+              <div key={db.id} className="py-2 text-sm flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <span className="font-medium">{db.db_name}</span>
                   <span className="ml-2 text-muted-foreground text-xs">{db.engine} · {db.db_user}</span>
+                  <DbPasswordButton id={db.id} />
                 </div>
-                <Badge variant={db.granted ? 'success' : 'warning'}>{db.granted ? 'Granted' : 'Pending'}</Badge>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant={db.granted ? 'success' : 'warning'}>{db.granted ? 'Granted' : 'Pending'}</Badge>
+                  <HealthBadge result={dbHealth[db.id]} />
+                  <Button size="sm" variant="outline" loading={dbHealth[db.id]?.loading} onClick={() => testDbHealth(db.id)}>
+                    Healthy
+                  </Button>
+                </div>
               </div>
             ))}
           </div>

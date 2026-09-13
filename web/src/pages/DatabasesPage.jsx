@@ -28,7 +28,7 @@ function engineStatus(engines, id) {
   };
 }
 
-async function copyText(value) {
+export async function copyText(value) {
   if (navigator.clipboard?.writeText) {
     await navigator.clipboard.writeText(value);
     return;
@@ -44,12 +44,40 @@ async function copyText(value) {
   input.remove();
 }
 
+function CopyableSecret({ value }) {
+  const [copied, setCopied] = useState(false);
+  async function copy() {
+    if (!value) return;
+    try {
+      await copyText(value);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {}
+  }
+  return (
+    <div className="flex items-center gap-1">
+      <code className="min-w-0 flex-1 truncate rounded bg-muted px-1.5 py-1 font-mono text-[11px]">{value}</code>
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        className="h-7 w-7 shrink-0 px-0"
+        onClick={copy}
+        aria-label={copied ? 'Copied' : 'Copy'}
+      >
+        {copied
+          ? <Check className="h-3.5 w-3.5" aria-hidden="true" />
+          : <Copy className="h-3.5 w-3.5" aria-hidden="true" />}
+      </Button>
+    </div>
+  );
+}
+
 function RedisPasswordButton() {
   const [open, setOpen] = useState(false);
   const [password, setPassword] = useState(null);
   const [configured, setConfigured] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [copied, setCopied] = useState(false);
   const [error, setError] = useState('');
 
   async function toggle() {
@@ -75,15 +103,6 @@ function RedisPasswordButton() {
     }
   }
 
-  async function copy() {
-    if (!password) return;
-    try {
-      await copyText(password);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {}
-  }
-
   return (
     <div className="space-y-1">
       <Button size="sm" variant="ghost" className="whitespace-nowrap" loading={loading} onClick={toggle}>
@@ -96,31 +115,93 @@ function RedisPasswordButton() {
       {open && configured === false && (
         <p className="text-[11px] text-muted-foreground">No password set</p>
       )}
-      {open && configured && (
-        <div className="flex items-center gap-1">
-          <code className="min-w-0 flex-1 truncate rounded bg-muted px-1.5 py-1 font-mono text-[11px]">{password}</code>
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            className="h-7 w-7 shrink-0 px-0"
-            onClick={copy}
-            aria-label={copied ? 'Password copied' : 'Copy password'}
-          >
-            {copied
-              ? <Check className="h-3.5 w-3.5" aria-hidden="true" />
-              : <Copy className="h-3.5 w-3.5" aria-hidden="true" />}
-          </Button>
-        </div>
-      )}
+      {open && configured && <CopyableSecret value={password} />}
     </div>
+  );
+}
+
+export function DbPasswordButton({ id }) {
+  const [open, setOpen] = useState(false);
+  const [password, setPassword] = useState(null);
+  const [configured, setConfigured] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  async function toggle() {
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    if (configured != null) {
+      setOpen(true);
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      const r = await api.get(`/api/databases/${id}/password`);
+      setConfigured(Boolean(r.configured));
+      setPassword(r.password ?? '');
+      setOpen(true);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="space-y-1">
+      <Button size="sm" variant="ghost" className="whitespace-nowrap" loading={loading} onClick={toggle}>
+        {open
+          ? <EyeOff className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          : <Eye className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
+        {open ? 'Hide password' : 'Show password'}
+      </Button>
+      {error ? <p className="text-[11px] text-destructive">{error}</p> : null}
+      {open && configured === false && (
+        <p className="text-[11px] text-muted-foreground">No password stored</p>
+      )}
+      {open && configured && <CopyableSecret value={password} />}
+    </div>
+  );
+}
+
+export function HealthBadge({ result }) {
+  if (!result) return null;
+  if (result.loading) return <Badge variant="secondary">checking</Badge>;
+  if (result.ok) return <Badge variant="success">healthy</Badge>;
+  return (
+    <span className="flex flex-col items-end gap-0.5">
+      <Badge variant="destructive">unhealthy</Badge>
+      {result.error ? <span className="max-w-[16rem] text-right text-[11px] text-destructive">{result.error}</span> : null}
+    </span>
+  );
+}
+
+export function CreatedCredsBanner({ creds, onDismiss, envError }) {
+  if (!creds) return null;
+  return (
+    <Card>
+      <CardContent className="space-y-2 p-4">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-sm font-medium">Database created</p>
+          <Button size="sm" variant="ghost" onClick={onDismiss}>Dismiss</Button>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {creds.db_name} · user {creds.db_user}. Store the password now.
+        </p>
+        <CopyableSecret value={creds.db_pass} />
+        {envError ? <p className="text-[11px] text-destructive">.env not updated: {envError}</p> : null}
+      </CardContent>
+    </Card>
   );
 }
 
 export default function DatabasesPage() {
   const qc = useQueryClient();
   const { user } = useAuth();
-  const canViewRedisPassword = ['owner', 'admin', 'operator'].includes(user?.role);
+  const canViewSecrets = ['owner', 'admin', 'operator'].includes(user?.role);
   const { data: dbs = [], isLoading } = useQuery({
     queryKey: ['databases'],
     queryFn:  () => api.get('/api/databases'),
@@ -131,12 +212,16 @@ export default function DatabasesPage() {
     refetchInterval: 15_000,
   });
 
-  const [form, setForm] = useState(null); // 'create' | 'import' | null
+  const [form, setForm] = useState(null);
   const [engine, setEngine] = useState('mysql');
   const [dbName, setDbName] = useState('');
   const [dbUser, setDbUser] = useState('');
+  const [dbPass, setDbPass] = useState('');
   const [loading, setLoading] = useState(false);
   const [busyEngine, setBusyEngine] = useState(null);
+  const [engineHealth, setEngineHealth] = useState({});
+  const [dbHealth, setDbHealth] = useState({});
+  const [createdCreds, setCreatedCreds] = useState(null);
 
   const sqlReady = useMemo(
     () => ENGINES.filter((e) => e.id !== 'redis' && engineStatus(engines, e.id).installed && engineStatus(engines, e.id).active),
@@ -149,23 +234,33 @@ export default function DatabasesPage() {
     enabled: form === 'import' && sqlReady.some((e) => e.id === engine),
   });
 
+  function resetFormFields() {
+    setDbName('');
+    setDbUser('');
+    setDbPass('');
+  }
+
   function openForm(mode, preferredEngine) {
     const first = preferredEngine && sqlReady.some((e) => e.id === preferredEngine)
       ? preferredEngine
       : sqlReady[0]?.id ?? 'mysql';
     setEngine(first);
-    setDbName('');
-    setDbUser('');
+    resetFormFields();
     setForm(mode);
   }
 
   async function create() {
     setLoading(true);
     try {
-      await api.post('/api/databases', { engine, db_name: dbName, db_user: dbUser || dbName });
+      const body = { engine, db_name: dbName };
+      if (dbUser.trim()) body.db_user = dbUser.trim();
+      if (dbPass) body.db_pass = dbPass;
+      const r = await api.post('/api/databases', body);
       qc.invalidateQueries(['databases']);
       qc.invalidateQueries(['db-existing']);
-      setForm(null); setDbName(''); setDbUser('');
+      setCreatedCreds({ db_name: r.db_name, db_user: r.db_user, db_pass: r.db_pass });
+      setForm(null);
+      resetFormFields();
     } catch (e) { alert(e.message); }
     finally { setLoading(false); }
   }
@@ -173,10 +268,13 @@ export default function DatabasesPage() {
   async function importExisting() {
     setLoading(true);
     try {
-      await api.post('/api/databases/import', { engine, db_name: dbName, db_user: dbUser || dbName });
+      const body = { engine, db_name: dbName, db_user: dbUser || dbName };
+      if (dbPass) body.db_pass = dbPass;
+      await api.post('/api/databases/import', body);
       qc.invalidateQueries(['databases']);
       qc.invalidateQueries(['db-existing']);
-      setForm(null); setDbName(''); setDbUser('');
+      setForm(null);
+      resetFormFields();
     } catch (e) { alert(e.message); }
     finally { setLoading(false); }
   }
@@ -208,6 +306,26 @@ export default function DatabasesPage() {
     finally { setBusyEngine(null); }
   }
 
+  async function testEngineHealth(id) {
+    setEngineHealth((h) => ({ ...h, [id]: { loading: true } }));
+    try {
+      const r = await api.post(`/api/databases/engines/${id}/health`, {});
+      setEngineHealth((h) => ({ ...h, [id]: { ok: Boolean(r.ok), error: r.error } }));
+    } catch (e) {
+      setEngineHealth((h) => ({ ...h, [id]: { ok: false, error: e.message } }));
+    }
+  }
+
+  async function testDbHealth(id) {
+    setDbHealth((h) => ({ ...h, [id]: { loading: true } }));
+    try {
+      const r = await api.post(`/api/databases/${id}/health`, {});
+      setDbHealth((h) => ({ ...h, [id]: { ok: Boolean(r.ok), error: r.error } }));
+    } catch (e) {
+      setDbHealth((h) => ({ ...h, [id]: { ok: false, error: e.message } }));
+    }
+  }
+
   if (isLoading) return <div className="flex justify-center p-16"><Spinner /></div>;
 
   return (
@@ -231,9 +349,12 @@ export default function DatabasesPage() {
             <div key={meta.id} className="rounded-xl border border-border bg-card p-3 space-y-2">
               <div className="flex items-start justify-between gap-2">
                 <p className="text-sm font-medium">{meta.label}</p>
-                <Badge variant={st.active ? 'success' : st.installed ? 'warning' : 'secondary'}>
-                  {st.active ? 'active' : st.installed ? 'stopped' : 'not installed'}
-                </Badge>
+                <div className="flex flex-col items-end gap-1">
+                  <Badge variant={st.active ? 'success' : st.installed ? 'warning' : 'secondary'}>
+                    {st.active ? 'active' : st.installed ? 'stopped' : 'not installed'}
+                  </Badge>
+                  <HealthBadge result={engineHealth[meta.id]} />
+                </div>
               </div>
               <p className="font-mono text-[11px] text-muted-foreground truncate">{meta.unit}</p>
               <p className="text-[11px] text-muted-foreground">Port {meta.port}</p>
@@ -260,14 +381,21 @@ export default function DatabasesPage() {
                     )}
                   </>
                 )}
+                {st.installed && (
+                  <Button size="sm" variant="outline" loading={engineHealth[meta.id]?.loading} onClick={() => testEngineHealth(meta.id)}>
+                    Test health
+                  </Button>
+                )}
               </div>
-              {meta.id === 'redis' && st.installed && canViewRedisPassword && (
+              {meta.id === 'redis' && st.installed && canViewSecrets && (
                 <RedisPasswordButton />
               )}
             </div>
           );
         })}
       </div>
+
+      <CreatedCredsBanner creds={createdCreds} onDismiss={() => setCreatedCreds(null)} />
 
       {form === 'create' && (
         <Card>
@@ -276,7 +404,8 @@ export default function DatabasesPage() {
               <p className="text-sm text-muted-foreground">Install and start MySQL, MariaDB, or PostgreSQL first.</p>
             ) : (
               <>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <p className="text-sm text-muted-foreground">Username and password are optional. Empty user defaults to the database name; empty password is generated.</p>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   <div>
                     <label className="text-xs font-medium block mb-1">Engine</label>
                     <select className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm" value={engine} onChange={(e) => setEngine(e.target.value)}>
@@ -289,7 +418,11 @@ export default function DatabasesPage() {
                   </div>
                   <div>
                     <label className="text-xs font-medium block mb-1">Username</label>
-                    <Input value={dbUser} onChange={(e) => setDbUser(e.target.value)} placeholder="myapp_user" />
+                    <Input value={dbUser} onChange={(e) => setDbUser(e.target.value)} placeholder="defaults to database name" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium block mb-1">Password</label>
+                    <Input type="password" value={dbPass} onChange={(e) => setDbPass(e.target.value)} placeholder="auto-generated" autoComplete="new-password" />
                   </div>
                 </div>
                 <Button loading={loading} onClick={create} disabled={!dbName}>Create</Button>
@@ -307,7 +440,7 @@ export default function DatabasesPage() {
             ) : (
               <>
                 <p className="text-sm text-muted-foreground">Register a database that already exists on the server without creating it again.</p>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   <div>
                     <label className="text-xs font-medium block mb-1">Engine</label>
                     <select className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm" value={engine} onChange={(e) => { setEngine(e.target.value); setDbName(''); }}>
@@ -330,6 +463,10 @@ export default function DatabasesPage() {
                     <label className="text-xs font-medium block mb-1">Username</label>
                     <Input value={dbUser} onChange={(e) => setDbUser(e.target.value)} placeholder="existing_user" />
                   </div>
+                  <div>
+                    <label className="text-xs font-medium block mb-1">Password</label>
+                    <Input type="password" value={dbPass} onChange={(e) => setDbPass(e.target.value)} placeholder="optional, for health checks" autoComplete="new-password" />
+                  </div>
                 </div>
                 <div className="flex gap-2">
                   <Button loading={loading} onClick={importExisting} disabled={!dbName}>Import</Button>
@@ -346,16 +483,21 @@ export default function DatabasesPage() {
           {dbs.length === 0 ? <p className="p-6 text-sm text-muted-foreground">No databases tracked yet. Create one or import an existing database.</p> : (
             <div className="divide-y divide-border">
               {dbs.map((db) => (
-                <div key={db.id} className="flex items-center justify-between px-4 py-3">
+                <div key={db.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
                   <div>
                     <p className="font-medium text-sm">{db.db_name}</p>
                     <p className="text-xs text-muted-foreground">
                       {db.engine} · user: {db.db_user}
                       {enginePort(db.engine) ? ` · port ${enginePort(db.engine)}` : ''}
                     </p>
+                    {canViewSecrets ? <DbPasswordButton id={db.id} /> : null}
                   </div>
-                  <div className="flex gap-2 items-center">
+                  <div className="flex flex-wrap gap-2 items-center">
                     <Badge variant={db.granted ? 'success' : 'warning'}>{db.granted ? 'Granted' : 'Pending'}</Badge>
+                    <HealthBadge result={dbHealth[db.id]} />
+                    <Button size="sm" variant="outline" loading={dbHealth[db.id]?.loading} onClick={() => testDbHealth(db.id)}>
+                      Healthy
+                    </Button>
                     <Button size="sm" variant="destructive" onClick={() => drop(db)}>Drop</Button>
                   </div>
                 </div>

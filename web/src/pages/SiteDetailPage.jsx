@@ -20,7 +20,7 @@ import {
 
 const TABS = [
   { id: 'overview',    label: 'Overview' },
-  { id: 'settings',    label: 'Settings' },
+  { id: 'settings',    label: 'PHP & Domain' },
   { id: 'commands',    label: 'Commands' },
   { id: 'env',         label: 'Environment' },
   { id: 'deployments', label: 'Deployments' },
@@ -80,6 +80,11 @@ export default function SiteDetailPage() {
           <Badge variant={site.status === 'online' ? 'success' : site.status === 'error' ? 'destructive' : 'secondary'}>
             {site.status}
           </Badge>
+          <Button size="sm" variant="outline" asChild>
+            <Link to={`/sites/${slug}/settings`}>
+              <Settings className="h-3 w-3" /> PHP & Domain
+            </Link>
+          </Button>
           <Button size="sm" onClick={() => {
             api.post(`/api/sites/${slug}/deploy`, {}).then(() => {
               qc.invalidateQueries(['site', slug]);
@@ -146,10 +151,23 @@ function OverviewTab({ site }) {
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       <Card>
-        <CardHeader><CardTitle className="text-base">Site Info</CardTitle></CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
+          <CardTitle className="text-base">Site Info</CardTitle>
+          <Link to={`/sites/${site.slug}/settings`} className="text-sm font-medium text-primary hover:underline">
+            Change PHP, domain, or port
+          </Link>
+        </CardHeader>
         <CardContent className="space-y-2 text-sm">
-          <Row label="Domain/Port"  value={site.domain ?? (site.port ? `Port ${site.port}` : '—')} />
-          <Row label="PHP version"  value={`PHP ${site.php_version}`} />
+          <Row
+            label="Domain/Port"
+            value={site.domain ?? (site.port ? `Port ${site.port}` : '—')}
+            editTo={`/sites/${site.slug}/settings`}
+          />
+          <Row
+            label="PHP version"
+            value={`PHP ${site.php_version}`}
+            editTo={`/sites/${site.slug}/settings`}
+          />
           <Row label="Web server"   value={site.webserver} />
           <Row label="SSL"          value={site.ssl_status} />
           <Row label="Deploy branch" value={site.deploy_branch} />
@@ -248,7 +266,10 @@ function SettingsTab({ site }) {
 
   return (
     <Card className="max-w-xl">
-      <CardHeader><CardTitle className="text-base">Site settings</CardTitle></CardHeader>
+      <CardHeader>
+        <CardTitle className="text-base">Change PHP, domain, or port</CardTitle>
+        <p className="text-sm font-normal text-muted-foreground">Edit how this site is reached and which PHP it runs.</p>
+      </CardHeader>
       <CardContent className="space-y-4">
         <SiteAccessFields
           phpVersion={phpVersion}
@@ -924,9 +945,9 @@ function SSLTab({ site }) {
       <CardContent className="space-y-4">
         {!site.domain ? (
           <p className="text-sm text-muted-foreground">
-            Set a domain in{' '}
-            <Link to={`/sites/${site.slug}/settings`} className="text-primary hover:underline">Settings</Link>
-            {' '}to issue an SSL certificate.
+            Set a domain on the{' '}
+            <Link to={`/sites/${site.slug}/settings`} className="text-primary hover:underline">PHP & Domain</Link>
+            {' '}tab to issue an SSL certificate.
           </p>
         ) : (
           <>
@@ -992,11 +1013,16 @@ function TerminalTab({ site }) {
 /* ──────────────────────────────────────────────── */
 /* Shared helpers                                   */
 /* ──────────────────────────────────────────────── */
-function Row({ label, value }) {
+function Row({ label, value, editTo }) {
   return (
-    <div className="flex items-center justify-between">
+    <div className="flex items-center justify-between gap-2">
       <span className="text-muted-foreground">{label}</span>
-      <span className="font-medium">{value}</span>
+      <span className="flex items-center gap-2 font-medium">
+        <span>{value}</span>
+        {editTo ? (
+          <Link to={editTo} className="text-xs font-medium text-primary hover:underline">Change</Link>
+        ) : null}
+      </span>
     </div>
   );
 }

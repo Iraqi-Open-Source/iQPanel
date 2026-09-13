@@ -5,7 +5,7 @@ import { api } from '../lib/api.js';
 import { Card, CardContent } from '../components/ui/Card.jsx';
 import Button, { buttonClassName } from '../components/ui/Button.jsx';
 import Badge from '../components/ui/Badge.jsx';
-import { Plus, Globe, Server, ExternalLink, Copy, Check } from 'lucide-react';
+import { Plus, Globe, Server, ExternalLink, Copy, Check, Settings } from 'lucide-react';
 import { sitePublicUrl, timeAgo } from '../lib/utils.js';
 
 const TYPE_ICONS = {
@@ -91,6 +91,13 @@ function SiteCard({ site }) {
             <CopyUrlButton url={url} />
           </div>
         ) : null}
+        <Link
+          to={`/sites/${site.slug}/settings`}
+          className={buttonClassName({ variant: 'outline', size: 'sm', className: 'w-full' })}
+        >
+          <Settings className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          Change PHP / domain / port
+        </Link>
       </CardContent>
     </Card>
   );

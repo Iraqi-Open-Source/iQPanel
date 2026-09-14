@@ -104,14 +104,19 @@ export default function Dashboard() {
           ) : (
             <div className="divide-y divide-border">
               {sites.map((s) => (
-                <div key={s.id} className="flex items-center justify-between py-2">
+                <div key={s.id} className="flex items-center justify-between py-2 gap-3">
                   <div>
                     <a href={`/sites/${s.slug}`} className="font-medium hover:text-primary">{s.name}</a>
                     <p className="text-xs text-muted-foreground">{s.domain ?? `port ${s.port}`} · {s.type} · PHP {s.php_version}</p>
                   </div>
-                  <Badge variant={s.status === 'online' ? 'success' : s.status === 'error' ? 'destructive' : 'secondary'}>
-                    {s.status}
-                  </Badge>
+                  <div className="flex items-center gap-3 shrink-0">
+                    <a href={`/sites/${s.slug}/settings`} className="text-xs font-medium text-primary hover:underline">
+                      Change PHP / domain
+                    </a>
+                    <Badge variant={s.status === 'online' ? 'success' : s.status === 'error' ? 'destructive' : 'secondary'}>
+                      {s.status}
+                    </Badge>
+                  </div>
                 </div>
               ))}
             </div>

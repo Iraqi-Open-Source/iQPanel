@@ -4,9 +4,13 @@ import { invoke } from '../../agent-client.js';
 import { requireAuth } from '../middleware.js';
 import { rbac } from '../rbac.js';
 import { auditLog } from '../../domain/audit.js';
-import { buildNginxVhost, buildPhpFpmPool, buildLaravelVhost } from '../../domain/provisioning.js';
-import { allocatePort } from '../../domain/ports.js';
 import { siteUserName } from '../../domain/sites.js';
+import {
+  applySiteAccess,
+  assertPhpInstalled,
+  persistAndApplySiteAccess,
+  resolveSiteAccess,
+} from '../../domain/site-access.js';
 
 function uuid()   { return randomBytes(16).toString('hex'); }
 function nowIso() { return new Date().toISOString(); }
@@ -43,21 +47,19 @@ export function registerSites(app) {
         return res.status(400).json({ error: 'Invalid type' });
       }
 
+      if (type === 'laravel' || type === 'php') {
+        await assertPhpInstalled(php_version);
+      }
+
       const slug = slugify(name);
       const existing = get('SELECT id FROM sites WHERE slug = ?', [slug]);
       if (existing) return res.status(409).json({ error: 'Slug already exists', slug });
 
-      // Resolve port — empty string / 0 from the wizard counts as "auto"
-      let assignedPort = port === '' || port === undefined ? null : port;
-      if (assignedPort != null) assignedPort = Number(assignedPort);
-      if (assignedPort != null && !Number.isInteger(assignedPort)) {
-        return res.status(400).json({ error: 'Invalid port' });
-      }
-      const host = domain || null;
-      if (!host && !assignedPort) {
-        try { assignedPort = await allocatePort(); } catch (e) {
-          return res.status(500).json({ error: `Port allocation failed: ${e.message}` });
-        }
+      let host, assignedPort;
+      try {
+        ({ domain: host, port: assignedPort } = await resolveSiteAccess({ domain, port }));
+      } catch (e) {
+        return res.status(e.status ?? 500).json({ error: e.message });
       }
 
       const id = uuid();
@@ -81,7 +83,7 @@ export function registerSites(app) {
       res.status(201).json(site);
     } catch (e) {
       console.error('[sites.create]', e);
-      if (!res.headersSent) res.status(500).json({ error: e.message ?? 'Failed to create site' });
+      if (!res.headersSent) res.status(e.status ?? 500).json({ error: e.message ?? 'Failed to create site' });
     }
   });
 
@@ -142,21 +144,60 @@ export function registerSites(app) {
     res.json({ ok: true });
   });
 
-  // PATCH /api/sites/:slug  – update site config
+  // PATCH /api/sites/:slug  – update site config (re-provisions Nginx/PHP-FPM when access fields change)
   app.patch('/api/sites/:slug', requireAuth, rbac('operator'), async (req, res) => {
     const site = get('SELECT * FROM sites WHERE slug = ?', [req.params.slug]);
     if (!site) return res.status(404).json({ error: 'Site not found' });
 
-    const allowed = ['name','domain','port','php_version','webserver','deploy_branch','status'];
-    const updates = [];
-    const vals    = [];
-    for (const k of allowed) {
-      if (req.body?.[k] !== undefined) { updates.push(`${k} = ?`); vals.push(req.body[k]); }
+    const body = req.body ?? {};
+    const simpleKeys = ['name', 'webserver', 'deploy_branch', 'status'];
+    const accessTouched = body.domain !== undefined || body.port !== undefined || body.php_version !== undefined;
+    const simpleTouched = simpleKeys.some((k) => body[k] !== undefined);
+    if (!accessTouched && !simpleTouched) return res.status(400).json({ error: 'No fields to update' });
+
+    try {
+      let php_version = site.php_version;
+      if (body.php_version !== undefined) {
+        php_version = body.php_version;
+        if (site.type === 'laravel' || site.type === 'php' || body.php_version !== site.php_version) {
+          await assertPhpInstalled(php_version);
+        }
+      }
+
+      let domain = site.domain;
+      let port = site.port;
+      if (body.domain !== undefined || body.port !== undefined) {
+        ({ domain, port } = await resolveSiteAccess(body, {
+          previous: site,
+          excludeSiteId: site.id,
+        }));
+      }
+
+      const next = { php_version, domain, port };
+      for (const k of simpleKeys) {
+        if (body[k] !== undefined) next[k] = body[k];
+      }
+
+      let updated;
+      if (accessTouched) {
+        updated = await persistAndApplySiteAccess(site, next);
+      } else {
+        const updates = [];
+        const vals = [];
+        for (const k of simpleKeys) {
+          if (body[k] !== undefined) { updates.push(`${k} = ?`); vals.push(body[k]); }
+        }
+        vals.push(nowIso(), site.id);
+        run(`UPDATE sites SET ${updates.join(', ')}, updated_at = ? WHERE id = ?`, vals);
+        updated = get('SELECT * FROM sites WHERE id = ?', [site.id]);
+      }
+
+      auditLog(req, 'site.update', site.slug);
+      res.json(updated);
+    } catch (e) {
+      console.error('[sites.patch]', e);
+      res.status(e.status ?? 500).json({ error: e.message ?? 'Failed to update site' });
     }
-    if (!updates.length) return res.status(400).json({ error: 'No fields to update' });
-    vals.push(nowIso(), site.id);
-    run(`UPDATE sites SET ${updates.join(', ')}, updated_at = ? WHERE id = ?`, vals);
-    res.json(get('SELECT * FROM sites WHERE id = ?', [site.id]));
   });
 
   // DELETE /api/sites/:slug
@@ -190,36 +231,16 @@ function githubDeepLink(repoUrl, _key) {
   return null;
 }
 
-async function provisionSite(id, slug, type, phpVersion, webserver, port, domain, repoUrl) {
-  // Create site user
+async function provisionSite(id, slug, type, phpVersion, webserver, port, domain, _repoUrl) {
   await invoke('users.create_site_user', { slug });
 
   const siteUser = siteUserName(slug);
   const directory = `/var/www/sites/${slug}`;
-
   run('UPDATE sites SET run_as_user = ?, directory = ? WHERE id = ?', [siteUser, directory, id]);
 
-  if (webserver === 'nginx') {
-    const vhostContent = type === 'laravel'
-      ? buildLaravelVhost({ slug, domain, port, phpVersion, siteUser })
-      : buildNginxVhost({ slug, type, domain, port, phpVersion, siteUser });
+  const site = get('SELECT * FROM sites WHERE id = ?', [id]);
+  await applySiteAccess(site, { php_version: phpVersion, webserver, port, domain });
 
-    await invoke('nginx.write_vhost', { slug, content: vhostContent });
-
-    if (port && !domain) {
-      try { await invoke('fw.allow', { port, proto: 'tcp' }); } catch (e) {
-        console.error('[provision] ufw allow failed', e?.message ?? e);
-      }
-    }
-
-    if (type === 'laravel' || type === 'php') {
-      const poolContent = buildPhpFpmPool({ slug, phpVersion, siteUser, directory });
-      await invoke('php.write_pool', { slug, version: phpVersion, content: poolContent });
-    }
-  }
-
-  // Generate deploy key
-  await invoke('git.keygen', { slug });
   const keyResult = await invoke('git.keygen', { slug });
   run('UPDATE sites SET deploy_key_pub = ?, status = ?, updated_at = ? WHERE id = ?',
     [keyResult.publicKey, 'online', nowIso(), id]);

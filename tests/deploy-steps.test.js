@@ -18,10 +18,10 @@ const {
 } = await import('../server/domain/deploy-steps.js');
 
 describe('exec working directory', () => {
-  test('script cds into app relative to the site home', () => {
+  test('script runs as-is (cwd is already the site app dir)', () => {
     assert.equal(
       buildExecScript('composer install --no-interaction'),
-      'cd app && composer install --no-interaction'
+      'composer install --no-interaction'
     );
   });
 });

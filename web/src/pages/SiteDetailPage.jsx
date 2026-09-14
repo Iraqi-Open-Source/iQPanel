@@ -9,14 +9,19 @@ import Badge from '../components/ui/Badge.jsx';
 import Input from '../components/ui/Input.jsx';
 import Spinner from '../components/ui/Spinner.jsx';
 import { formatBytes, timeAgo } from '../lib/utils.js';
+import SiteAccessFields, {
+  accessPayload, installedPhpVersions, validateAccess,
+} from '../components/SiteAccessFields.jsx';
 import {
   Play, RefreshCw, ArrowLeft, Copy, Terminal, FileText,
   Database, Clock, Shield, Archive, Globe, AlertCircle,
   CheckCircle, ChevronRight, Settings, RotateCcw,
 } from 'lucide-react';
+import { CreatedCredsBanner, DbPasswordButton, HealthBadge } from './DatabasesPage.jsx';
 
 const TABS = [
   { id: 'overview',    label: 'Overview' },
+  { id: 'settings',    label: 'PHP & Domain' },
   { id: 'commands',    label: 'Commands' },
   { id: 'env',         label: 'Environment' },
   { id: 'deployments', label: 'Deployments' },
@@ -30,21 +35,24 @@ const TABS = [
 ];
 
 const SHORTCUTS = [
-  { label: 'Migrate',        cmd: 'php artisan migrate' },
-  { label: 'Migrate status', cmd: 'php artisan migrate:status' },
-  { label: 'Optimize clear', cmd: 'php artisan optimize:clear' },
-  { label: 'Config cache',   cmd: 'php artisan config:cache' },
-  { label: 'Route cache',    cmd: 'php artisan route:cache' },
-  { label: 'View cache',     cmd: 'php artisan view:cache' },
-  { label: 'Cache clear',    cmd: 'php artisan cache:clear' },
-  { label: 'Storage link',   cmd: 'php artisan storage:link' },
-  { label: 'Queue restart',  cmd: 'php artisan queue:restart' },
-  { label: 'Optimize',       cmd: 'php artisan optimize' },
-  { label: 'Up',             cmd: 'php artisan up' },
-  { label: 'Down',           cmd: 'php artisan down' },
-  { label: 'Composer install', cmd: 'composer install --no-dev --optimize-autoloader --no-interaction' },
-  { label: 'npm build',      cmd: 'npm run build', destructive: false },
-  { label: 'Migrate fresh ⚠', cmd: 'php artisan migrate:fresh', destructive: true },
+  { label: 'about', cmd: 'php artisan about' },
+  { label: 'migrate:status',    cmd: 'php artisan migrate:status' },
+  { label: 'migrate',           cmd: 'php artisan migrate' },
+  { label: 'db:seed',           cmd: 'php artisan db:seed' },
+  { label: 'optimize',          cmd: 'php artisan optimize' },
+  { label: 'optimize:clear',    cmd: 'php artisan optimize:clear' },
+  { label: 'Config cache',      cmd: 'php artisan config:cache' },
+  { label: 'Route cache',       cmd: 'php artisan route:cache' },
+  { label: 'View cache',        cmd: 'php artisan view:cache' },
+  { label: 'Cache clear',       cmd: 'php artisan cache:clear' },
+  { label: 'Storage link',      cmd: 'php artisan storage:link' },
+  { label: 'Queue restart',     cmd: 'php artisan queue:restart' },
+  { label: 'up',                cmd: 'php artisan up' },
+  { label: 'down',              cmd: 'php artisan down' },
+  { label: 'Composer install',  cmd: 'composer install --no-dev --optimize-autoloader --no-interaction' },
+  { label: 'npm build',         cmd: 'npm run build' },
+  { label: 'Migrate fresh ⚠',   cmd: 'php artisan migrate:fresh', destructive: true },
+  { label: 'Migrate rollback ⚠', cmd: 'php artisan migrate:rollback', destructive: true },
 ];
 
 export default function SiteDetailPage() {
@@ -76,6 +84,11 @@ export default function SiteDetailPage() {
           <Badge variant={site.status === 'online' ? 'success' : site.status === 'error' ? 'destructive' : 'secondary'}>
             {site.status}
           </Badge>
+          <Button size="sm" variant="outline" asChild>
+            <Link to={`/sites/${slug}/settings`}>
+              <Settings className="h-3 w-3" /> PHP & Domain
+            </Link>
+          </Button>
           <Button size="sm" onClick={() => {
             api.post(`/api/sites/${slug}/deploy`, {}).then(() => {
               qc.invalidateQueries(['site', slug]);
@@ -105,6 +118,7 @@ export default function SiteDetailPage() {
 
       {/* Tab content */}
       {activeTab === 'overview'    && <OverviewTab    site={site} />}
+      {activeTab === 'settings'    && <SettingsTab    site={site} />}
       {activeTab === 'commands'    && <CommandsTab    site={site} />}
       {activeTab === 'env'         && <EnvTab         site={site} />}
       {activeTab === 'deployments' && <DeploymentsTab site={site} />}
@@ -141,10 +155,23 @@ function OverviewTab({ site }) {
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       <Card>
-        <CardHeader><CardTitle className="text-base">Site Info</CardTitle></CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
+          <CardTitle className="text-base">Site Info</CardTitle>
+          <Link to={`/sites/${site.slug}/settings`} className="text-sm font-medium text-primary hover:underline">
+            Change PHP, domain, or port
+          </Link>
+        </CardHeader>
         <CardContent className="space-y-2 text-sm">
-          <Row label="Domain/Port"  value={site.domain ?? `Port ${site.port}`} />
-          <Row label="PHP version"  value={`PHP ${site.php_version}`} />
+          <Row
+            label="Domain/Port"
+            value={site.domain ?? (site.port ? `Port ${site.port}` : '—')}
+            editTo={`/sites/${site.slug}/settings`}
+          />
+          <Row
+            label="PHP version"
+            value={`PHP ${site.php_version}`}
+            editTo={`/sites/${site.slug}/settings`}
+          />
           <Row label="Web server"   value={site.webserver} />
           <Row label="SSL"          value={site.ssl_status} />
           <Row label="Deploy branch" value={site.deploy_branch} />
@@ -189,6 +216,84 @@ function OverviewTab({ site }) {
         </Card>
       )}
     </div>
+  );
+}
+
+/* ──────────────────────────────────────────────── */
+/* Settings                                         */
+/* ──────────────────────────────────────────────── */
+function SettingsTab({ site }) {
+  const qc = useQueryClient();
+  const showPhp = site.type === 'laravel' || site.type === 'php';
+  const { data: installed = {} } = useQuery({
+    queryKey: ['php-versions'],
+    queryFn: () => api.get('/api/php/versions'),
+  });
+  const phpOptions = installedPhpVersions(installed, site.php_version);
+
+  const [phpVersion, setPhpVersion] = useState(site.php_version);
+  const [usePort, setUsePort] = useState(!site.domain);
+  const [domain, setDomain] = useState(site.domain ?? '');
+  const [listenPort, setListenPort] = useState(site.port != null ? String(site.port) : '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    setPhpVersion(site.php_version);
+    setUsePort(!site.domain);
+    setDomain(site.domain ?? '');
+    setListenPort(site.port != null ? String(site.port) : '');
+  }, [site.id, site.php_version, site.domain, site.port]);
+
+  const domainChanging = Boolean(site.ssl_status === 'active' && site.domain && (
+    usePort || String(domain).trim() !== site.domain
+  ));
+
+  async function save() {
+    const accessError = validateAccess({ usePort, domain, port: listenPort });
+    if (accessError) { setError(accessError); return; }
+    if (showPhp && !phpOptions.length) { setError('Install a PHP version first'); return; }
+    setSaving(true); setError(''); setSaved(false);
+    try {
+      await api.patch(`/api/sites/${site.slug}`, accessPayload({
+        phpVersion, usePort, domain, port: listenPort,
+      }));
+      qc.invalidateQueries(['site', site.slug]);
+      setSaved(true);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card className="max-w-xl">
+      <CardHeader>
+        <CardTitle className="text-base">Change PHP, domain, or port</CardTitle>
+        <p className="text-sm font-normal text-muted-foreground">Edit how this site is reached and which PHP it runs.</p>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <SiteAccessFields
+          phpVersion={phpVersion}
+          onPhpVersion={setPhpVersion}
+          phpOptions={phpOptions}
+          showPhp={showPhp}
+          showAccess
+          usePort={usePort}
+          onUsePort={setUsePort}
+          domain={domain}
+          onDomain={setDomain}
+          port={listenPort}
+          onPort={setListenPort}
+          sslWarning={domainChanging}
+        />
+        {error && <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}
+        {saved && !error && <p className="text-sm text-green-600">Settings saved. Nginx and PHP-FPM were updated.</p>}
+        <Button onClick={save} loading={saving}>Save</Button>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -476,40 +581,106 @@ function DatabasesTab({ site }) {
     staleTime: 15_000,
   });
   const ready = ['mysql', 'mariadb', 'postgres'].filter((id) => engines[id]?.installed && engines[id]?.active);
-  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState(null);
   const [engine, setEngine] = useState('mysql');
   const [dbName, setDbName] = useState('');
   const [dbUser, setDbUser] = useState('');
+  const [dbPass, setDbPass] = useState('');
   const [loading, setLoading] = useState(false);
+  const [createdCreds, setCreatedCreds] = useState(null);
+  const [envError, setEnvError] = useState('');
+  const [dbHealth, setDbHealth] = useState({});
   const qc = useQueryClient();
+
+  const { data: existing = [], isFetching: loadingExisting } = useQuery({
+    queryKey: ['db-existing', engine],
+    queryFn:  () => api.get(`/api/databases/existing?engine=${encodeURIComponent(engine)}`),
+    enabled: form === 'import' && ready.includes(engine),
+  });
+
+  function resetFields() {
+    setDbName('');
+    setDbUser('');
+    setDbPass('');
+  }
+
+  function openForm(mode) {
+    const first = ready.includes(engine) ? engine : (ready[0] ?? 'mysql');
+    setEngine(first);
+    resetFields();
+    setForm(form === mode ? null : mode);
+  }
 
   async function create() {
     setLoading(true);
     try {
-      await api.post('/api/databases', { site_slug: site.slug, engine, db_name: dbName, db_user: dbUser, inject_env: true });
+      const body = { site_slug: site.slug, engine, db_name: dbName, inject_env: true };
+      if (dbUser.trim()) body.db_user = dbUser.trim();
+      if (dbPass) body.db_pass = dbPass;
+      const r = await api.post('/api/databases', body);
       qc.invalidateQueries(['site-dbs', site.slug]);
-      setShowForm(false);
+      qc.invalidateQueries(['databases']);
+      qc.invalidateQueries(['db-existing']);
+      setCreatedCreds({ db_name: r.db_name, db_user: r.db_user, db_pass: r.db_pass });
+      setEnvError(r.env_error || '');
+      setForm(null);
+      resetFields();
     } catch (e) { alert(e.message); }
     finally { setLoading(false); }
+  }
+
+  async function importExisting() {
+    setLoading(true);
+    try {
+      const body = { site_slug: site.slug, engine, db_name: dbName, db_user: dbUser || dbName };
+      if (dbPass) body.db_pass = dbPass;
+      await api.post('/api/databases/import', body);
+      qc.invalidateQueries(['site-dbs', site.slug]);
+      qc.invalidateQueries(['databases']);
+      qc.invalidateQueries(['db-existing']);
+      setForm(null);
+      resetFields();
+    } catch (e) { alert(e.message); }
+    finally { setLoading(false); }
+  }
+
+  async function testDbHealth(id) {
+    setDbHealth((h) => ({ ...h, [id]: { loading: true } }));
+    try {
+      const r = await api.post(`/api/databases/${id}/health`, {});
+      setDbHealth((h) => ({ ...h, [id]: { ok: Boolean(r.ok), error: r.error } }));
+    } catch (e) {
+      setDbHealth((h) => ({ ...h, [id]: { ok: false, error: e.message } }));
+    }
   }
 
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <CardTitle className="text-base">Databases</CardTitle>
-          <Button size="sm" onClick={() => setShowForm(!showForm)}>
-            {showForm ? 'Cancel' : '+ Add database'}
-          </Button>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={() => openForm('import')}>
+              {form === 'import' ? 'Cancel' : 'Add existing'}
+            </Button>
+            <Button size="sm" onClick={() => openForm('create')}>
+              {form === 'create' ? 'Cancel' : '+ New database'}
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        {showForm && (
+        <CreatedCredsBanner
+          creds={createdCreds}
+          envError={envError}
+          onDismiss={() => { setCreatedCreds(null); setEnvError(''); }}
+        />
+        {form === 'create' && (
           <div className="rounded-lg border border-border p-4 space-y-3">
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <div className="space-y-1">
-                <label className="text-xs font-medium">Engine</label>
-                <select className="h-8 w-full rounded border border-input bg-transparent text-sm px-2" value={engine} onChange={(e) => setEngine(e.target.value)}>
+                <label htmlFor="site-create-engine" className="text-xs font-medium">Engine</label>
+                <select id="site-create-engine" className="h-8 w-full rounded border border-input bg-transparent text-sm px-2" value={engine} onChange={(e) => setEngine(e.target.value)}>
                   {ready.length === 0 && <option value="">No engine running</option>}
                   {ready.includes('mysql') && <option value="mysql">MySQL</option>}
                   {ready.includes('mariadb') && <option value="mariadb">MariaDB</option>}
@@ -517,27 +688,79 @@ function DatabasesTab({ site }) {
                 </select>
               </div>
               <div className="space-y-1">
-                <label className="text-xs font-medium">Database name</label>
-                <Input className="h-8 text-xs" value={dbName} onChange={(e) => setDbName(e.target.value)} placeholder="myapp_db" />
+                <label htmlFor="site-create-name" className="text-xs font-medium">Database name</label>
+                <Input id="site-create-name" className="h-8 text-xs" value={dbName} onChange={(e) => setDbName(e.target.value)} placeholder="myapp_db" />
               </div>
               <div className="space-y-1">
-                <label className="text-xs font-medium">Username</label>
-                <Input className="h-8 text-xs" value={dbUser} onChange={(e) => setDbUser(e.target.value)} placeholder="myapp_user" />
+                <label htmlFor="site-create-user" className="text-xs font-medium">Username</label>
+                <Input id="site-create-user" className="h-8 text-xs" value={dbUser} onChange={(e) => setDbUser(e.target.value)} placeholder="defaults to database name" />
+              </div>
+              <div className="space-y-1">
+                <label htmlFor="site-create-pass" className="text-xs font-medium">Password</label>
+                <Input id="site-create-pass" className="h-8 text-xs" type="password" value={dbPass} onChange={(e) => setDbPass(e.target.value)} placeholder="auto-generated" autoComplete="new-password" />
               </div>
             </div>
-            <p className="text-xs text-muted-foreground">Credentials will be injected into .env automatically.</p>
+            <p className="text-xs text-muted-foreground">Leave user and password empty to use Plesk-style defaults. Credentials are injected into .env.</p>
             <Button size="sm" onClick={create} loading={loading} disabled={!engine || !dbName}>Create database</Button>
+          </div>
+        )}
+        {form === 'import' && (
+          <div className="rounded-lg border border-border p-4 space-y-3">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <div className="space-y-1">
+                <label htmlFor="site-import-engine" className="text-xs font-medium">Engine</label>
+                <select id="site-import-engine" className="h-8 w-full rounded border border-input bg-transparent text-sm px-2" value={engine} onChange={(e) => { setEngine(e.target.value); setDbName(''); }}>
+                  {ready.length === 0 && <option value="">No engine running</option>}
+                  {ready.includes('mysql') && <option value="mysql">MySQL</option>}
+                  {ready.includes('mariadb') && <option value="mariadb">MariaDB</option>}
+                  {ready.includes('postgres') && <option value="postgres">PostgreSQL</option>}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label htmlFor="site-import-name" className="text-xs font-medium">Existing database</label>
+                <select
+                  id="site-import-name"
+                  className="h-8 w-full rounded border border-input bg-transparent text-sm px-2"
+                  value={dbName}
+                  onChange={(e) => { setDbName(e.target.value); if (!dbUser) setDbUser(e.target.value); }}
+                  disabled={loadingExisting || ready.length === 0}
+                >
+                  <option value="">{loadingExisting ? 'Loading…' : existing.length ? 'Select…' : 'No untracked databases'}</option>
+                  {existing.map((n) => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label htmlFor="site-import-user" className="text-xs font-medium">Username</label>
+                <Input id="site-import-user" className="h-8 text-xs" value={dbUser} onChange={(e) => setDbUser(e.target.value)} placeholder="existing_user" />
+              </div>
+              <div className="space-y-1">
+                <label htmlFor="site-import-pass" className="text-xs font-medium">Password</label>
+                <Input id="site-import-pass" className="h-8 text-xs" type="password" value={dbPass} onChange={(e) => setDbPass(e.target.value)} placeholder="optional, for health checks" autoComplete="new-password" />
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">Attaches an existing server database to {site.name} without creating it again.</p>
+            <Button size="sm" onClick={importExisting} loading={loading} disabled={!engine || !dbName}>Add to site</Button>
           </div>
         )}
         {dbs.length === 0 ? <p className="text-sm text-muted-foreground">No databases yet.</p> : (
           <div className="divide-y divide-border">
             {dbs.map((db) => (
-              <div key={db.id} className="py-2 text-sm flex items-center justify-between">
+              <div key={db.id} className="py-2 text-sm flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <span className="font-medium">{db.db_name}</span>
                   <span className="ml-2 text-muted-foreground text-xs">{db.engine} · {db.db_user}</span>
+                  <DbPasswordButton
+                    id={db.id}
+                    knownPassword={createdCreds?.db_name === db.db_name ? createdCreds.db_pass : undefined}
+                  />
                 </div>
-                <Badge variant={db.granted ? 'success' : 'warning'}>{db.granted ? 'Granted' : 'Pending'}</Badge>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant={db.granted ? 'success' : 'warning'}>{db.granted ? 'Granted' : 'Pending'}</Badge>
+                  <HealthBadge result={dbHealth[db.id]} />
+                  <Button size="sm" variant="outline" loading={dbHealth[db.id]?.loading} onClick={() => testDbHealth(db.id)}>
+                    Healthy
+                  </Button>
+                </div>
               </div>
             ))}
           </div>
@@ -843,7 +1066,11 @@ function SSLTab({ site }) {
       <CardHeader><CardTitle className="text-base">SSL Certificate</CardTitle></CardHeader>
       <CardContent className="space-y-4">
         {!site.domain ? (
-          <p className="text-sm text-muted-foreground">Set a domain on this site to issue an SSL certificate.</p>
+          <p className="text-sm text-muted-foreground">
+            Set a domain on the{' '}
+            <Link to={`/sites/${site.slug}/settings`} className="text-primary hover:underline">PHP & Domain</Link>
+            {' '}tab to issue an SSL certificate.
+          </p>
         ) : (
           <>
             <div className="flex items-center gap-2">
@@ -908,11 +1135,16 @@ function TerminalTab({ site }) {
 /* ──────────────────────────────────────────────── */
 /* Shared helpers                                   */
 /* ──────────────────────────────────────────────── */
-function Row({ label, value }) {
+function Row({ label, value, editTo }) {
   return (
-    <div className="flex items-center justify-between">
+    <div className="flex items-center justify-between gap-2">
       <span className="text-muted-foreground">{label}</span>
-      <span className="font-medium">{value}</span>
+      <span className="flex items-center gap-2 font-medium">
+        <span>{value}</span>
+        {editTo ? (
+          <Link to={editTo} className="text-xs font-medium text-primary hover:underline">Change</Link>
+        ) : null}
+      </span>
     </div>
   );
 }

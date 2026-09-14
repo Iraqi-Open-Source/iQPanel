@@ -186,7 +186,28 @@ if [[ "${SOURCE_REAL}" != "${APP_REAL}" ]]; then
 fi
 chown -R root:root "${APP_ROOT}"
 chmod -R go-w "${APP_ROOT}"
-chown -R panel:panel /var/lib/iqpanel /var/www/sites /var/log/panel /var/backups/panel
+# Own panel data dirs — but never recursively rewrite /var/www/sites/* homes
+# (those belong to per-site iqpanel-* users; -R panel:panel breaks deploy/exec).
+chown -R panel:panel /var/lib/iqpanel /var/log/panel /var/backups/panel
+install -d -m 0755 /var/www/sites
+chown panel:panel /var/www/sites
+restore_site_homes() {
+  local site_home slug site_user
+  shopt -s nullglob
+  for site_home in /var/www/sites/*; do
+    [[ -d "${site_home}" ]] || continue
+    slug="$(basename "${site_home}")"
+    site_user="$(getent passwd | awk -F: -v h="${site_home}" '$6 == h { print $1; exit }')"
+    if [[ -z "${site_user}" ]]; then
+      site_user="iqpanel-${slug}"
+      id -u "${site_user}" >/dev/null 2>&1 || continue
+    fi
+    chown -R "${site_user}:${site_user}" "${site_home}" 2>/dev/null || true
+    chmod 0750 "${site_home}" 2>/dev/null || true
+  done
+  shopt -u nullglob
+}
+restore_site_homes
 
 [[ -f "${APP_ROOT}/server/data/schema.sql" && -f "${APP_ROOT}/server/data/db.js" ]] \
   || { echo "Install tree is missing server/data (schema.sql / db.js)." >&2; exit 1; }
@@ -211,6 +232,13 @@ chmod -R go-w "${APP_ROOT}/public"
 
 SECRET_KEY="$(openssl rand -hex 32)"
 AGENT_TOKEN="$(openssl rand -hex 32)"
+if [[ -f /etc/panel-agent/env ]]; then
+  # Keep existing field-encryption and agent tokens so stored DB passwords stay readable.
+  prev_secret="$(grep -E '^PANEL_SECRET_KEY=' /etc/panel-agent/env | cut -d= -f2- || true)"
+  prev_agent="$(grep -E '^PANEL_AGENT_TOKEN=' /etc/panel-agent/env | cut -d= -f2- || true)"
+  [[ -n "${prev_secret}" ]] && SECRET_KEY="${prev_secret}"
+  [[ -n "${prev_agent}" ]] && AGENT_TOKEN="${prev_agent}"
+fi
 ADMIN_PASSWORD="$(openssl rand -base64 18 | tr -d '/+=' | head -c 20)"
 ADMIN_HASH="$(/usr/bin/node -e "
 const c = require('node:crypto');
@@ -272,7 +300,10 @@ start_unit() {
 
 SERVICES_OK=1
 start_unit iqpanel-agent.service || SERVICES_OK=0
-chown -R panel:panel /var/lib/iqpanel /var/www/sites /var/log/panel /var/backups/panel
+chown -R panel:panel /var/lib/iqpanel /var/log/panel /var/backups/panel
+chown panel:panel /var/www/sites
+chmod 0755 /var/www/sites
+restore_site_homes
 if [[ "${SERVICES_OK}" == "1" ]]; then
   start_unit iqpanel-worker.service || SERVICES_OK=0
   start_unit iqpanel.service || SERVICES_OK=0

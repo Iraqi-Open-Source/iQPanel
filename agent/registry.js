@@ -68,11 +68,15 @@ export const registry = new Map([
   ['db.drop',               dbact.drop],
   ['db.dump',               dbact.dump],
   ['db.list',               dbact.list],
+  ['db.engine_health',      dbact.engineHealth],
+  ['db.health',             dbact.health],
+  ['db.set_password',       dbact.setPassword],
 
   // redis
   ['redis.status',          redis.status],
   ['redis.flush',           redis.flush],
   ['redis.info',            redis.info],
+  ['redis.password',        redis.password],
 
   // docker
   ['docker.status',         docker.status],

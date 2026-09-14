@@ -4,6 +4,7 @@ import { commandNeedsReauth, SHORTCUT_ALLOWLIST, DESTRUCTIVE_COMMANDS } from '..
 
 describe('command reauth policy', () => {
   test('allowlisted artisan shortcuts do not require reauth', () => {
+    assert.equal(commandNeedsReauth('php artisan about'), false);
     assert.equal(commandNeedsReauth('php artisan migrate:status'), false);
     assert.equal(commandNeedsReauth('php artisan migrate'), false);
     assert.equal(commandNeedsReauth('php artisan optimize:clear'), false);

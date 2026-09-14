@@ -1,26 +1,27 @@
 import { spawn } from 'node:child_process';
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { createHash } from 'node:crypto';
+import { SITES_ROOT, siteUserName, chownToSiteUser } from '../lib/site-user.js';
 
-const SITES_ROOT = process.env.PANEL_SITES_ROOT ?? '/var/www/sites';
 const MAX_OUTPUT = 1 * 1024 * 1024; // 1 MB
 
 function validateSlug(slug) {
   if (!slug || !/^[a-z0-9-]+$/.test(slug)) throw new Error('Invalid slug');
 }
 
-function siteUser(slug) {
-  const prefix = 'iqpanel-';
-  if (prefix.length + slug.length <= 32) return `${prefix}${slug}`;
-  const hash = createHash('sha1').update(slug).digest('hex').slice(0, 6);
-  const keep = 32 - prefix.length - 1 - hash.length;
-  return `${prefix}${slug.slice(0, keep)}-${hash}`;
+function ensureSiteApp(slug) {
+  const home = join(SITES_ROOT, slug);
+  const app = join(home, 'app');
+  mkdirSync(app, { recursive: true });
+  try {
+    chownToSiteUser(slug, home);
+  } catch {}
+  return { home, app, user: siteUserName(slug) };
 }
 
-/** Relative to the site home. Absolute cd fails: /var/www/sites is 0750 panel. */
+/** Commands run with cwd already set to the site app directory. */
 export function buildExecScript(cmd) {
-  return `cd app && ${cmd}`;
+  return cmd;
 }
 
 export const run = {
@@ -31,8 +32,7 @@ export const run = {
     if (cmd.length > 4096) throw new Error('cmd too long');
   },
   async run({ slug, cmd, env: extraEnv = {} }, emit) {
-    const home = join(SITES_ROOT, slug);
-    const user = siteUser(slug);
+    const { home, app, user } = ensureSiteApp(slug);
 
     const safeEnv = {
       HOME: home,
@@ -54,9 +54,10 @@ export const run = {
         '-u', user, '--',
         '/bin/bash', '--noprofile', '--norc', '-c', script,
       ], {
-        // Root can enter 0750 homes; keep that cwd so `cd app` does not
-        // walk /var/www/sites as the unprivileged site user.
-        cwd: home,
+        // Root opens app/; the site user inherits that cwd and must own it
+        // so composer/artisan can write. Avoid `cd app` — with a 0750 home
+        // owned by the wrong user, relative cd fails even when cwd is set.
+        cwd: app,
         env: safeEnv,
       });
 
@@ -104,6 +105,7 @@ export const envWrite = {
   async run({ slug, content }) {
     const path = join(SITES_ROOT, slug, 'app', '.env');
     writeFileSync(path, content, { mode: 0o640 });
+    try { chownToSiteUser(slug, path); } catch {}
     return { path };
   },
 };

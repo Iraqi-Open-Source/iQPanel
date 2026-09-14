@@ -25,6 +25,34 @@ function engineFail(res, e) {
   return res.status(500).json({ error: e.message, ...(reason ? { reason } : {}) });
 }
 
+const DB_LIST_SQL = `
+  SELECT d.id, d.site_id, d.engine, d.db_name, d.db_user, d.granted, d.created_at,
+         s.slug AS site_slug, s.name AS site_name, s.type AS site_type,
+         s.domain AS site_domain, s.port AS site_port, s.status AS site_status,
+         s.php_version AS site_php_version
+  FROM databases d
+  LEFT JOIN sites s ON s.id = d.site_id
+`;
+
+function mapDatabaseRow(row) {
+  const {
+    site_slug, site_name, site_type, site_domain, site_port, site_status, site_php_version,
+    ...db
+  } = row;
+  return {
+    ...db,
+    site: db.site_id ? {
+      slug: site_slug,
+      name: site_name,
+      type: site_type,
+      domain: site_domain,
+      port: site_port != null ? Number(site_port) : null,
+      status: site_status,
+      php_version: site_php_version,
+    } : null,
+  };
+}
+
 async function revealOrRotatePassword(db) {
   const got = tryDecryptField(db.db_pass_enc);
   if (got.ok && got.password) return { password: got.password, rotated: false };
@@ -129,15 +157,15 @@ export function registerDatabases(app) {
   });
 
   app.get('/api/databases', requireAuth, (req, res) => {
-    const dbs = query('SELECT id,site_id,engine,db_name,db_user,granted,created_at FROM databases ORDER BY created_at DESC');
-    res.json(dbs);
+    const dbs = query(`${DB_LIST_SQL} ORDER BY d.created_at DESC`);
+    res.json(dbs.map(mapDatabaseRow));
   });
 
   app.get('/api/sites/:slug/databases', requireAuth, (req, res) => {
     const site = get('SELECT id FROM sites WHERE slug = ?', [req.params.slug]);
     if (!site) return res.status(404).json({ error: 'Site not found' });
-    const dbs = query('SELECT id,engine,db_name,db_user,granted,created_at FROM databases WHERE site_id = ?', [site.id]);
-    res.json(dbs);
+    const dbs = query(`${DB_LIST_SQL} WHERE d.site_id = ? ORDER BY d.created_at DESC`, [site.id]);
+    res.json(dbs.map(mapDatabaseRow));
   });
 
   app.get('/api/databases/:id/password', requireAuth, rbac('operator'), async (req, res) => {

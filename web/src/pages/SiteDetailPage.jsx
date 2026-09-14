@@ -578,7 +578,7 @@ function DatabasesTab({ site }) {
     staleTime: 15_000,
   });
   const ready = ['mysql', 'mariadb', 'postgres'].filter((id) => engines[id]?.installed && engines[id]?.active);
-  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState(null);
   const [engine, setEngine] = useState('mysql');
   const [dbName, setDbName] = useState('');
   const [dbUser, setDbUser] = useState('');
@@ -589,6 +589,25 @@ function DatabasesTab({ site }) {
   const [dbHealth, setDbHealth] = useState({});
   const qc = useQueryClient();
 
+  const { data: existing = [], isFetching: loadingExisting } = useQuery({
+    queryKey: ['db-existing', engine],
+    queryFn:  () => api.get(`/api/databases/existing?engine=${encodeURIComponent(engine)}`),
+    enabled: form === 'import' && ready.includes(engine),
+  });
+
+  function resetFields() {
+    setDbName('');
+    setDbUser('');
+    setDbPass('');
+  }
+
+  function openForm(mode) {
+    const first = ready.includes(engine) ? engine : (ready[0] ?? 'mysql');
+    setEngine(first);
+    resetFields();
+    setForm(form === mode ? null : mode);
+  }
+
   async function create() {
     setLoading(true);
     try {
@@ -598,12 +617,26 @@ function DatabasesTab({ site }) {
       const r = await api.post('/api/databases', body);
       qc.invalidateQueries(['site-dbs', site.slug]);
       qc.invalidateQueries(['databases']);
+      qc.invalidateQueries(['db-existing']);
       setCreatedCreds({ db_name: r.db_name, db_user: r.db_user, db_pass: r.db_pass });
       setEnvError(r.env_error || '');
-      setShowForm(false);
-      setDbName('');
-      setDbUser('');
-      setDbPass('');
+      setForm(null);
+      resetFields();
+    } catch (e) { alert(e.message); }
+    finally { setLoading(false); }
+  }
+
+  async function importExisting() {
+    setLoading(true);
+    try {
+      const body = { site_slug: site.slug, engine, db_name: dbName, db_user: dbUser || dbName };
+      if (dbPass) body.db_pass = dbPass;
+      await api.post('/api/databases/import', body);
+      qc.invalidateQueries(['site-dbs', site.slug]);
+      qc.invalidateQueries(['databases']);
+      qc.invalidateQueries(['db-existing']);
+      setForm(null);
+      resetFields();
     } catch (e) { alert(e.message); }
     finally { setLoading(false); }
   }
@@ -621,11 +654,16 @@ function DatabasesTab({ site }) {
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <CardTitle className="text-base">Databases</CardTitle>
-          <Button size="sm" onClick={() => setShowForm(!showForm)}>
-            {showForm ? 'Cancel' : '+ Add database'}
-          </Button>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={() => openForm('import')}>
+              {form === 'import' ? 'Cancel' : 'Add existing'}
+            </Button>
+            <Button size="sm" onClick={() => openForm('create')}>
+              {form === 'create' ? 'Cancel' : '+ New database'}
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -634,12 +672,12 @@ function DatabasesTab({ site }) {
           envError={envError}
           onDismiss={() => { setCreatedCreds(null); setEnvError(''); }}
         />
-        {showForm && (
+        {form === 'create' && (
           <div className="rounded-lg border border-border p-4 space-y-3">
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <div className="space-y-1">
-                <label className="text-xs font-medium">Engine</label>
-                <select className="h-8 w-full rounded border border-input bg-transparent text-sm px-2" value={engine} onChange={(e) => setEngine(e.target.value)}>
+                <label htmlFor="site-create-engine" className="text-xs font-medium">Engine</label>
+                <select id="site-create-engine" className="h-8 w-full rounded border border-input bg-transparent text-sm px-2" value={engine} onChange={(e) => setEngine(e.target.value)}>
                   {ready.length === 0 && <option value="">No engine running</option>}
                   {ready.includes('mysql') && <option value="mysql">MySQL</option>}
                   {ready.includes('mariadb') && <option value="mariadb">MariaDB</option>}
@@ -647,20 +685,58 @@ function DatabasesTab({ site }) {
                 </select>
               </div>
               <div className="space-y-1">
-                <label className="text-xs font-medium">Database name</label>
-                <Input className="h-8 text-xs" value={dbName} onChange={(e) => setDbName(e.target.value)} placeholder="myapp_db" />
+                <label htmlFor="site-create-name" className="text-xs font-medium">Database name</label>
+                <Input id="site-create-name" className="h-8 text-xs" value={dbName} onChange={(e) => setDbName(e.target.value)} placeholder="myapp_db" />
               </div>
               <div className="space-y-1">
-                <label className="text-xs font-medium">Username</label>
-                <Input className="h-8 text-xs" value={dbUser} onChange={(e) => setDbUser(e.target.value)} placeholder="defaults to database name" />
+                <label htmlFor="site-create-user" className="text-xs font-medium">Username</label>
+                <Input id="site-create-user" className="h-8 text-xs" value={dbUser} onChange={(e) => setDbUser(e.target.value)} placeholder="defaults to database name" />
               </div>
               <div className="space-y-1">
-                <label className="text-xs font-medium">Password</label>
-                <Input className="h-8 text-xs" type="password" value={dbPass} onChange={(e) => setDbPass(e.target.value)} placeholder="auto-generated" autoComplete="new-password" />
+                <label htmlFor="site-create-pass" className="text-xs font-medium">Password</label>
+                <Input id="site-create-pass" className="h-8 text-xs" type="password" value={dbPass} onChange={(e) => setDbPass(e.target.value)} placeholder="auto-generated" autoComplete="new-password" />
               </div>
             </div>
             <p className="text-xs text-muted-foreground">Leave user and password empty to use Plesk-style defaults. Credentials are injected into .env.</p>
             <Button size="sm" onClick={create} loading={loading} disabled={!engine || !dbName}>Create database</Button>
+          </div>
+        )}
+        {form === 'import' && (
+          <div className="rounded-lg border border-border p-4 space-y-3">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <div className="space-y-1">
+                <label htmlFor="site-import-engine" className="text-xs font-medium">Engine</label>
+                <select id="site-import-engine" className="h-8 w-full rounded border border-input bg-transparent text-sm px-2" value={engine} onChange={(e) => { setEngine(e.target.value); setDbName(''); }}>
+                  {ready.length === 0 && <option value="">No engine running</option>}
+                  {ready.includes('mysql') && <option value="mysql">MySQL</option>}
+                  {ready.includes('mariadb') && <option value="mariadb">MariaDB</option>}
+                  {ready.includes('postgres') && <option value="postgres">PostgreSQL</option>}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label htmlFor="site-import-name" className="text-xs font-medium">Existing database</label>
+                <select
+                  id="site-import-name"
+                  className="h-8 w-full rounded border border-input bg-transparent text-sm px-2"
+                  value={dbName}
+                  onChange={(e) => { setDbName(e.target.value); if (!dbUser) setDbUser(e.target.value); }}
+                  disabled={loadingExisting || ready.length === 0}
+                >
+                  <option value="">{loadingExisting ? 'Loading…' : existing.length ? 'Select…' : 'No untracked databases'}</option>
+                  {existing.map((n) => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label htmlFor="site-import-user" className="text-xs font-medium">Username</label>
+                <Input id="site-import-user" className="h-8 text-xs" value={dbUser} onChange={(e) => setDbUser(e.target.value)} placeholder="existing_user" />
+              </div>
+              <div className="space-y-1">
+                <label htmlFor="site-import-pass" className="text-xs font-medium">Password</label>
+                <Input id="site-import-pass" className="h-8 text-xs" type="password" value={dbPass} onChange={(e) => setDbPass(e.target.value)} placeholder="optional, for health checks" autoComplete="new-password" />
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">Attaches an existing server database to {site.name} without creating it again.</p>
+            <Button size="sm" onClick={importExisting} loading={loading} disabled={!engine || !dbName}>Add to site</Button>
           </div>
         )}
         {dbs.length === 0 ? <p className="text-sm text-muted-foreground">No databases yet.</p> : (

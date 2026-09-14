@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../lib/api.js';
 import { useAuth } from '../lib/auth-context.jsx';
@@ -7,7 +8,9 @@ import Button from '../components/ui/Button.jsx';
 import Badge from '../components/ui/Badge.jsx';
 import Input from '../components/ui/Input.jsx';
 import Spinner from '../components/ui/Spinner.jsx';
-import { Copy, Check, Eye, EyeOff } from 'lucide-react';
+import { Copy, Check, Eye, EyeOff, Globe } from 'lucide-react';
+
+const SELECT_CLASS = 'h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm';
 
 const ENGINES = [
   { id: 'mysql',    label: 'MySQL',      pkg: 'mysql-server',    unit: 'mysql.service',       port: 3306 },
@@ -18,6 +21,76 @@ const ENGINES = [
 
 function enginePort(id) {
   return ENGINES.find((e) => e.id === id)?.port;
+}
+
+function siteAccessLabel(site) {
+  if (!site) return '—';
+  const domain = String(site.domain ?? '').trim();
+  if (domain) return domain;
+  if (site.port) return `port ${site.port}`;
+  return 'no access';
+}
+
+function siteOptionLabel(site) {
+  const parts = [site.name];
+  if (site.slug && site.slug !== site.name) parts.push(site.slug);
+  if (site.type) parts.push(site.type);
+  parts.push(siteAccessLabel(site));
+  return parts.join(' · ');
+}
+
+function SiteSelect({ id, sites, value, onChange }) {
+  return (
+    <div>
+      <label htmlFor={id} className="mb-1 block text-xs font-medium">Related site</label>
+      <select
+        id={id}
+        className={SELECT_CLASS}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        <option value="">None — not linked to a site</option>
+        {sites.map((s) => (
+          <option key={s.id} value={s.slug}>
+            {siteOptionLabel(s)}
+          </option>
+        ))}
+      </select>
+      {sites.length === 0 ? (
+        <p className="mt-1 text-[11px] text-muted-foreground">No sites yet. Create a site first to link this database.</p>
+      ) : (
+        <p className="mt-1 text-[11px] text-muted-foreground">Optional. Linked databases appear on the site’s Databases tab.</p>
+      )}
+    </div>
+  );
+}
+
+function RelatedSiteInfo({ site }) {
+  if (!site) {
+    return <p className="mt-1 text-xs text-muted-foreground">No related site</p>;
+  }
+  return (
+    <Link
+      to={`/sites/${site.slug}/databases`}
+      className="mt-2 flex items-start gap-2 rounded-lg border border-border bg-muted/40 px-2.5 py-2 hover:border-primary/40 hover:bg-accent"
+    >
+      <Globe className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+      <div className="min-w-0 flex-1">
+        <p className="text-xs font-medium">{site.name}</p>
+        <p className="text-[11px] leading-4 text-muted-foreground">
+          {site.slug && site.slug !== site.name ? `${site.slug} · ` : ''}
+          {site.type}
+          {site.php_version ? ` · PHP ${site.php_version}` : ''}
+          {' · '}{siteAccessLabel(site)}
+        </p>
+      </div>
+      {site.status ? (
+        <Badge variant={site.status === 'online' ? 'success' : site.status === 'error' ? 'destructive' : 'secondary'}>
+          {site.status}
+        </Badge>
+      ) : null}
+    </Link>
+  );
 }
 
 function engineStatus(engines, id) {
@@ -220,9 +293,14 @@ export default function DatabasesPage() {
     queryFn:  () => api.get('/api/databases/engines'),
     refetchInterval: 15_000,
   });
+  const { data: sites = [] } = useQuery({
+    queryKey: ['sites'],
+    queryFn:  () => api.get('/api/sites'),
+  });
 
   const [form, setForm] = useState(null);
   const [engine, setEngine] = useState('mysql');
+  const [siteSlug, setSiteSlug] = useState('');
   const [dbName, setDbName] = useState('');
   const [dbUser, setDbUser] = useState('');
   const [dbPass, setDbPass] = useState('');
@@ -231,6 +309,7 @@ export default function DatabasesPage() {
   const [engineHealth, setEngineHealth] = useState({});
   const [dbHealth, setDbHealth] = useState({});
   const [createdCreds, setCreatedCreds] = useState(null);
+  const [envError, setEnvError] = useState('');
 
   const sqlReady = useMemo(
     () => ENGINES.filter((e) => e.id !== 'redis' && engineStatus(engines, e.id).installed && engineStatus(engines, e.id).active),
@@ -244,6 +323,7 @@ export default function DatabasesPage() {
   });
 
   function resetFormFields() {
+    setSiteSlug('');
     setDbName('');
     setDbUser('');
     setDbPass('');
@@ -264,10 +344,16 @@ export default function DatabasesPage() {
       const body = { engine, db_name: dbName };
       if (dbUser.trim()) body.db_user = dbUser.trim();
       if (dbPass) body.db_pass = dbPass;
+      if (siteSlug) {
+        body.site_slug = siteSlug;
+        body.inject_env = true;
+      }
       const r = await api.post('/api/databases', body);
       qc.invalidateQueries(['databases']);
       qc.invalidateQueries(['db-existing']);
+      if (siteSlug) qc.invalidateQueries(['site-dbs', siteSlug]);
       setCreatedCreds({ db_name: r.db_name, db_user: r.db_user, db_pass: r.db_pass });
+      setEnvError(r.env_error || '');
       setForm(null);
       resetFormFields();
     } catch (e) { alert(e.message); }
@@ -279,9 +365,11 @@ export default function DatabasesPage() {
     try {
       const body = { engine, db_name: dbName, db_user: dbUser || dbName };
       if (dbPass) body.db_pass = dbPass;
+      if (siteSlug) body.site_slug = siteSlug;
       await api.post('/api/databases/import', body);
       qc.invalidateQueries(['databases']);
       qc.invalidateQueries(['db-existing']);
+      if (siteSlug) qc.invalidateQueries(['site-dbs', siteSlug]);
       setForm(null);
       resetFormFields();
     } catch (e) { alert(e.message); }
@@ -345,13 +433,13 @@ export default function DatabasesPage() {
           <Button variant="outline" disabled={sqlReady.length === 0} onClick={() => openForm('import')}>
             Add existing
           </Button>
-          <Button onClick={() => setForm(form === 'create' ? null : 'create')}>
+          <Button onClick={() => (form === 'create' ? setForm(null) : openForm('create'))}>
             {form === 'create' ? 'Cancel' : '+ New database'}
           </Button>
         </div>
       </div>
 
-      <CreatedCredsBanner creds={createdCreds} onDismiss={() => setCreatedCreds(null)} />
+      <CreatedCredsBanner creds={createdCreds} envError={envError} onDismiss={() => { setCreatedCreds(null); setEnvError(''); }} />
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {ENGINES.map((meta) => {
@@ -413,25 +501,26 @@ export default function DatabasesPage() {
               <p className="text-sm text-muted-foreground">Install and start MySQL, MariaDB, or PostgreSQL first.</p>
             ) : (
               <>
-                <p className="text-sm text-muted-foreground">Username and password are optional. Empty user defaults to the database name; empty password is generated.</p>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <p className="text-sm text-muted-foreground">Username and password are optional. Empty user defaults to the database name; empty password is generated. Linking a site writes credentials into that site’s .env.</p>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  <SiteSelect id="create-site" sites={sites} value={siteSlug} onChange={setSiteSlug} />
                   <div>
-                    <label className="text-xs font-medium block mb-1">Engine</label>
-                    <select className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm" value={engine} onChange={(e) => setEngine(e.target.value)}>
+                    <label htmlFor="create-engine" className="mb-1 block text-xs font-medium">Engine</label>
+                    <select id="create-engine" className={SELECT_CLASS} value={engine} onChange={(e) => setEngine(e.target.value)}>
                       {sqlReady.map((e) => <option key={e.id} value={e.id}>{e.label}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="text-xs font-medium block mb-1">Database name</label>
-                    <Input value={dbName} onChange={(e) => setDbName(e.target.value)} placeholder="myapp_production" />
+                    <label htmlFor="create-db-name" className="mb-1 block text-xs font-medium">Database name</label>
+                    <Input id="create-db-name" value={dbName} onChange={(e) => setDbName(e.target.value)} placeholder="myapp_production" />
                   </div>
                   <div>
-                    <label className="text-xs font-medium block mb-1">Username</label>
-                    <Input value={dbUser} onChange={(e) => setDbUser(e.target.value)} placeholder="defaults to database name" />
+                    <label htmlFor="create-db-user" className="mb-1 block text-xs font-medium">Username</label>
+                    <Input id="create-db-user" value={dbUser} onChange={(e) => setDbUser(e.target.value)} placeholder="defaults to database name" />
                   </div>
                   <div>
-                    <label className="text-xs font-medium block mb-1">Password</label>
-                    <Input type="password" value={dbPass} onChange={(e) => setDbPass(e.target.value)} placeholder="auto-generated" autoComplete="new-password" />
+                    <label htmlFor="create-db-pass" className="mb-1 block text-xs font-medium">Password</label>
+                    <Input id="create-db-pass" type="password" value={dbPass} onChange={(e) => setDbPass(e.target.value)} placeholder="auto-generated" autoComplete="new-password" />
                   </div>
                 </div>
                 <Button loading={loading} onClick={create} disabled={!dbName}>Create</Button>
@@ -448,18 +537,20 @@ export default function DatabasesPage() {
               <p className="text-sm text-muted-foreground">No running SQL engine. Start one above, then import.</p>
             ) : (
               <>
-                <p className="text-sm text-muted-foreground">Register a database that already exists on the server without creating it again.</p>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <p className="text-sm text-muted-foreground">Register a database that already exists on the server without creating it again. Optionally link it to a site.</p>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  <SiteSelect id="import-site" sites={sites} value={siteSlug} onChange={setSiteSlug} />
                   <div>
-                    <label className="text-xs font-medium block mb-1">Engine</label>
-                    <select className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm" value={engine} onChange={(e) => { setEngine(e.target.value); setDbName(''); }}>
+                    <label htmlFor="import-engine" className="mb-1 block text-xs font-medium">Engine</label>
+                    <select id="import-engine" className={SELECT_CLASS} value={engine} onChange={(e) => { setEngine(e.target.value); setDbName(''); }}>
                       {sqlReady.map((e) => <option key={e.id} value={e.id}>{e.label}</option>)}
                     </select>
                   </div>
                   <div>
-                    <label className="text-xs font-medium block mb-1">Existing database</label>
+                    <label htmlFor="import-db-name" className="mb-1 block text-xs font-medium">Existing database</label>
                     <select
-                      className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm"
+                      id="import-db-name"
+                      className={SELECT_CLASS}
                       value={dbName}
                       onChange={(e) => { setDbName(e.target.value); if (!dbUser) setDbUser(e.target.value); }}
                       disabled={loadingExisting}
@@ -469,12 +560,12 @@ export default function DatabasesPage() {
                     </select>
                   </div>
                   <div>
-                    <label className="text-xs font-medium block mb-1">Username</label>
-                    <Input value={dbUser} onChange={(e) => setDbUser(e.target.value)} placeholder="existing_user" />
+                    <label htmlFor="import-db-user" className="mb-1 block text-xs font-medium">Username</label>
+                    <Input id="import-db-user" value={dbUser} onChange={(e) => setDbUser(e.target.value)} placeholder="existing_user" />
                   </div>
                   <div>
-                    <label className="text-xs font-medium block mb-1">Password</label>
-                    <Input type="password" value={dbPass} onChange={(e) => setDbPass(e.target.value)} placeholder="optional, for health checks" autoComplete="new-password" />
+                    <label htmlFor="import-db-pass" className="mb-1 block text-xs font-medium">Password</label>
+                    <Input id="import-db-pass" type="password" value={dbPass} onChange={(e) => setDbPass(e.target.value)} placeholder="optional, for health checks" autoComplete="new-password" />
                   </div>
                 </div>
                 <div className="flex gap-2">
@@ -492,13 +583,14 @@ export default function DatabasesPage() {
           {dbs.length === 0 ? <p className="p-6 text-sm text-muted-foreground">No databases tracked yet. Create one or import an existing database.</p> : (
             <div className="divide-y divide-border">
               {dbs.map((db) => (
-                <div key={db.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
-                  <div>
+                <div key={db.id} className="flex flex-wrap items-start justify-between gap-3 px-4 py-3">
+                  <div className="min-w-0 flex-1">
                     <p className="font-medium text-sm">{db.db_name}</p>
                     <p className="text-xs text-muted-foreground">
                       {db.engine} · user: {db.db_user}
                       {enginePort(db.engine) ? ` · port ${enginePort(db.engine)}` : ''}
                     </p>
+                    <RelatedSiteInfo site={db.site} />
                     {canViewSecrets ? (
                       <DbPasswordButton
                         id={db.id}

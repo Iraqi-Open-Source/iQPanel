@@ -1,17 +1,7 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync, mkdirSync, existsSync, chmodSync } from 'node:fs';
 import { join } from 'node:path';
-import { createHash } from 'node:crypto';
-
-const SITES_ROOT = process.env.PANEL_SITES_ROOT ?? '/var/www/sites';
-
-function siteUserName(slug) {
-  const prefix = 'iqpanel-';
-  if (prefix.length + slug.length <= 32) return `${prefix}${slug}`;
-  const hash = createHash('sha1').update(slug).digest('hex').slice(0, 6);
-  const keep = 32 - prefix.length - 1 - hash.length;
-  return `${prefix}${slug.slice(0, keep)}-${hash}`;
-}
+import { SITES_ROOT, siteUserName, chownToSiteUser } from '../lib/site-user.js';
 
 function userExists(user) {
   return spawnSync('id', ['-u', user], { encoding: 'utf8' }).status === 0;
@@ -47,8 +37,9 @@ export const createSiteUser = {
     }
 
     try { execFileSync('usermod', ['-aG', user, 'www-data'], { encoding: 'utf8' }); } catch {}
-    execFileSync('chown', ['-R', `${user}:${user}`, home], { encoding: 'utf8' });
+    chownToSiteUser(slug, home);
     execFileSync('chmod', ['0750', home], { encoding: 'utf8' });
+    try { chmodSync(sshDir, 0o700); } catch {}
 
     return { user, home };
   },

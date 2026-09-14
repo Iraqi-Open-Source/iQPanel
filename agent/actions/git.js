@@ -1,8 +1,7 @@
 import { execFileSync, spawn } from 'node:child_process';
 import { writeFileSync, mkdirSync, chmodSync, existsSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-
-const SITES_ROOT = process.env.PANEL_SITES_ROOT ?? '/var/www/sites';
+import { SITES_ROOT, chownToSiteUser } from '../lib/site-user.js';
 
 function siteKeyPath(slug) {
   return join(SITES_ROOT, slug, '.ssh', 'id_ed25519');
@@ -51,6 +50,7 @@ export const keygen = {
       execFileSync('ssh-keygen', ['-t', 'ed25519', '-f', keyPath, '-N', '', '-C', `iqpanel-${slug}`], { encoding: 'utf8' });
       chmodSync(keyPath, 0o600);
     }
+    chownToSite(slug, sshDir);
     const pub = execFileSync('cat', [`${keyPath}.pub`], { encoding: 'utf8' }).trim();
     return { publicKey: pub, path: keyPath };
   },
@@ -71,7 +71,7 @@ export const lsRemote = {
 
 function chownToSite(slug, path) {
   try {
-    execFileSync('chown', ['-R', `--reference=${join(SITES_ROOT, slug)}`, path], { encoding: 'utf8' });
+    chownToSiteUser(slug, path);
   } catch {}
 }
 

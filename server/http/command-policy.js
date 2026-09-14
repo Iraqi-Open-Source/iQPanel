@@ -2,10 +2,13 @@
  * Allowlisted site shortcuts vs. commands that need a fresh password.
  */
 export const SHORTCUT_ALLOWLIST = new Set([
-  'php artisan migrate',
+  'php artisan about',
   'php artisan migrate:status',
+  'php artisan migrate',
+  'php artisan db:seed',
   'php artisan migrate:fresh',
   'php artisan migrate:rollback',
+  'php artisan optimize',
   'php artisan optimize:clear',
   'php artisan config:cache',
   'php artisan config:clear',

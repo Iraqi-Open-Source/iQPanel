@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import { readFileSync, writeFileSync, mkdirSync, existsSync, chmodSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, chmodSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { SITES_ROOT, siteUserName, chownToSiteUser } from '../lib/site-user.js';
 
@@ -52,7 +52,9 @@ export const removeSiteUser = {
     if (userExists(user)) {
       try { execFileSync('userdel', ['--force', user], { encoding: 'utf8' }); } catch {}
     }
-    return { removed: user };
+    const home = join(SITES_ROOT, slug);
+    try { rmSync(home, { recursive: true, force: true }); } catch {}
+    return { removed: user, home };
   },
 };
 

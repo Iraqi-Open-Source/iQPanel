@@ -111,7 +111,7 @@ export default function Dashboard() {
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
                     <a href={`/sites/${s.slug}/settings`} className="text-xs font-medium text-primary hover:underline">
-                      Change PHP / domain
+                      Settings
                     </a>
                     <Badge variant={s.status === 'online' ? 'success' : s.status === 'error' ? 'destructive' : 'secondary'}>
                       {s.status}

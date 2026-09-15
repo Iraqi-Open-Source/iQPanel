@@ -13,7 +13,9 @@ export function formatBytes(bytes) {
 }
 
 export function timeAgo(iso) {
+  if (!iso) return '—';
   const ms  = Date.now() - new Date(iso).getTime();
+  if (!Number.isFinite(ms)) return '—';
   const sec = Math.floor(ms / 1000);
   if (sec < 60)   return `${sec}s ago`;
   const min = Math.floor(sec / 60);
@@ -21,6 +23,33 @@ export function timeAgo(iso) {
   const hr  = Math.floor(min / 60);
   if (hr < 24)    return `${hr}h ago`;
   return `${Math.floor(hr / 24)}d ago`;
+}
+
+export function formatDateTime(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleString();
+}
+
+export function formatDuration(startIso, endIso) {
+  if (!startIso) return '—';
+  const start = new Date(startIso).getTime();
+  const end = endIso ? new Date(endIso).getTime() : Date.now();
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return '—';
+  const sec = Math.round((end - start) / 1000);
+  if (sec < 60) return `${sec}s`;
+  const min = Math.floor(sec / 60);
+  const s = sec % 60;
+  if (min < 60) return s ? `${min}m ${s}s` : `${min}m`;
+  const hr = Math.floor(min / 60);
+  const m = min % 60;
+  return m ? `${hr}h ${m}m` : `${hr}h`;
+}
+
+export function shortSha(sha) {
+  const s = String(sha ?? '').trim();
+  return s ? s.slice(0, 8) : null;
 }
 
 export function sitePublicUrl(site) {

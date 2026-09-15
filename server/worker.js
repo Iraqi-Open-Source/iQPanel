@@ -94,6 +94,7 @@ async function processDeploy(payload, logPath) {
   }
 
   const commitInfo = await invoke('git.current_commit', { slug: site.slug }).catch(() => ({}));
+  persistDeployCommit(deployment_id, commitInfo);
 
   const steps = query('SELECT * FROM site_deploy_steps WHERE site_id = ? AND enabled = 1 ORDER BY position', [site_id]);
   for (const step of steps) {
@@ -121,12 +122,20 @@ async function processDeploy(payload, logPath) {
     } catch {}
   }
 
-  emit(`[${now()}] Deploy complete (${commitInfo.sha ?? 'unknown'})\n`);
+  emit(`[${now()}] Deploy complete (${commitInfo.sha ?? commitInfo.short ?? 'unknown'})\n`);
   log.end();
 
-  run('UPDATE deployments SET status = ?, commit_sha = ?, commit_msg = ?, finished_at = ? WHERE id = ?',
-    ['success', commitInfo.sha ?? null, commitInfo.message ?? null, now(), deployment_id]);
+  persistDeployCommit(deployment_id, commitInfo);
+  run('UPDATE deployments SET status = ?, finished_at = ? WHERE id = ?',
+    ['success', now(), deployment_id]);
   run('UPDATE sites SET status = ? WHERE id = ?', ['online', site_id]);
+}
+
+function persistDeployCommit(deploymentId, info = {}) {
+  const sha = String(info.sha || '').trim();
+  if (!sha) return;
+  run('UPDATE deployments SET commit_sha = ?, commit_msg = ? WHERE id = ?',
+    [sha, info.message ?? null, deploymentId]);
 }
 
 async function processRollback(payload, logPath) {
@@ -207,6 +216,13 @@ async function tick() {
       [failed ? 'failed' : 'queued', e.message, nowIso(), job.id]);
     if (payload.deployment_id) {
       if (failed) {
+        if (payload.site_id) {
+          const site = get('SELECT slug FROM sites WHERE id = ?', [payload.site_id]);
+          if (site?.slug) {
+            const info = await invoke('git.current_commit', { slug: site.slug }).catch(() => ({}));
+            persistDeployCommit(payload.deployment_id, info);
+          }
+        }
         run(`UPDATE deployments SET status = 'failed', finished_at = ? WHERE id = ?`,
           [nowIso(), payload.deployment_id]);
       } else {

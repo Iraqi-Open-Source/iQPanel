@@ -34,6 +34,18 @@ export function registerSites(app) {
     res.json(siteRow(site));
   });
 
+  // GET /api/sites/:slug/git  – live HEAD (used by overview when deploy SHA is missing)
+  app.get('/api/sites/:slug/git', requireAuth, async (req, res) => {
+    const site = get('SELECT * FROM sites WHERE slug = ?', [req.params.slug]);
+    if (!site) return res.status(404).json({ error: 'Site not found' });
+    try {
+      const info = await invoke('git.current_commit', { slug: site.slug });
+      res.json(info ?? { sha: null });
+    } catch (e) {
+      res.json({ sha: null, message: null, branch: null, error: e.message });
+    }
+  });
+
   // POST /api/sites  – Create site (step 1-3 of wizard; step 4-5 via /api/sites/:slug/wizard)
   app.post('/api/sites', requireAuth, rbac('operator'), async (req, res) => {
     try {
@@ -150,6 +162,12 @@ export function registerSites(app) {
     if (!site) return res.status(404).json({ error: 'Site not found' });
 
     const body = req.body ?? {};
+    if (body.name !== undefined) {
+      const name = String(body.name).trim();
+      if (!name) return res.status(400).json({ error: 'name required' });
+      if (name.length > 80) return res.status(400).json({ error: 'name too long' });
+      body.name = name;
+    }
     const simpleKeys = ['name', 'webserver', 'deploy_branch', 'status'];
     const accessTouched = body.domain !== undefined || body.port !== undefined || body.php_version !== undefined;
     const simpleTouched = simpleKeys.some((k) => body[k] !== undefined);
@@ -205,7 +223,16 @@ export function registerSites(app) {
     const site = get('SELECT * FROM sites WHERE slug = ?', [req.params.slug]);
     if (!site) return res.status(404).json({ error: 'Site not found' });
 
-    // Best-effort cleanup
+    const units = query('SELECT unit_name FROM systemd_units WHERE site_id = ?', [site.id]);
+    for (const u of units) {
+      try { await invoke('svc.remove_unit', { name: u.unit_name }); } catch {}
+    }
+
+    const oldPort = site.port != null ? Number(site.port) : null;
+    if (oldPort && oldPort !== 80 && oldPort !== 443 && oldPort !== Number(process.env.PANEL_PORT)) {
+      try { await invoke('fw.delete', { port: oldPort, proto: 'tcp' }); } catch {}
+    }
+
     try { await invoke('nginx.remove_vhost',     { slug: site.slug }); } catch {}
     try { await invoke('php.remove_pool',        { slug: site.slug, version: site.php_version }); } catch {}
     try { await invoke('users.remove_site_user', { slug: site.slug }); } catch {}

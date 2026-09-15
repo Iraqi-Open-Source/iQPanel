@@ -9,7 +9,8 @@ import Button from '../components/ui/Button.jsx';
 import Badge from '../components/ui/Badge.jsx';
 import Input from '../components/ui/Input.jsx';
 import Spinner from '../components/ui/Spinner.jsx';
-import { formatBytes, timeAgo } from '../lib/utils.js';
+import { formatBytes, timeAgo, formatDateTime, formatDuration, shortSha } from '../lib/utils.js';
+import DangerConfirmDialog from '../components/DangerConfirmDialog.jsx';
 import SiteAccessFields, {
   accessPayload, installedPhpVersions, validateAccess,
 } from '../components/SiteAccessFields.jsx';
@@ -18,13 +19,13 @@ import {
   Play, RefreshCw, ArrowLeft, Copy, FileText,
   Database, Clock, Shield, Archive, Globe, AlertCircle,
   CheckCircle, ChevronRight, Settings, RotateCcw,
-  FilePlus, Folder, File,
+  FilePlus, Folder, File, Trash2,
 } from 'lucide-react';
 import { CreatedCredsBanner, DbPasswordButton, HealthBadge } from './DatabasesPage.jsx';
 
 const TABS = [
   { id: 'overview',    label: 'Overview' },
-  { id: 'settings',    label: 'PHP & Domain' },
+  { id: 'settings',    label: 'Settings' },
   { id: 'commands',    label: 'Commands' },
   { id: 'env',         label: 'Environment' },
   { id: 'deployments', label: 'Deployments' },
@@ -138,6 +139,7 @@ export default function SiteDetailPage() {
       await api.post(`/api/sites/${slug}/deploy`, {});
       qc.invalidateQueries(['site', slug]);
       qc.invalidateQueries(['deployments', slug]);
+      qc.invalidateQueries(['site-git', slug]);
       setDeployOpen(false);
       navigate(`/sites/${slug}/deployments`);
     } catch (e) {
@@ -165,7 +167,7 @@ export default function SiteDetailPage() {
           </Badge>
           <Button size="sm" variant="outline" asChild>
             <Link to={`/sites/${slug}/settings`}>
-              <Settings className="h-3 w-3" /> PHP & Domain
+              <Settings className="h-3 w-3" /> Settings
             </Link>
           </Button>
           <Button size="sm" onClick={openDeployDialog}>
@@ -233,10 +235,33 @@ export default function SiteDetailPage() {
 /* Overview                                         */
 /* ──────────────────────────────────────────────── */
 function OverviewTab({ site }) {
-  const { data: commit } = useQuery({
-    queryKey: ['commit', site.slug],
-    queryFn: () => api.get(`/api/sites/${site.slug}/deployments`).then((d) => d[0] ?? null),
+  const { data: deploys = [] } = useQuery({
+    queryKey: ['deployments', site.slug],
+    queryFn: () => api.get(`/api/sites/${site.slug}/deployments`),
+    refetchInterval: (q) => {
+      const rows = q.state.data ?? [];
+      return rows.some((d) => d.status === 'queued' || d.status === 'running') ? 1500 : 8000;
+    },
   });
+  const { data: git } = useQuery({
+    queryKey: ['site-git', site.slug],
+    queryFn: () => api.get(`/api/sites/${site.slug}/git`),
+  });
+
+  const last = deploys[0] ?? null;
+  const deploySha = shortSha(last?.commit_sha);
+  const liveSha = shortSha(git?.sha);
+  const commitSha = deploySha || liveSha;
+  const commitMsg = (last?.commit_msg && String(last.commit_msg).trim())
+    || git?.message
+    || null;
+  const branch = git?.branch || site.deploy_branch;
+  const steps = last?.steps ?? [];
+  const stepCounts = steps.reduce((acc, s) => {
+    acc[s.status] = (acc[s.status] ?? 0) + 1;
+    acc.total += 1;
+    return acc;
+  }, { total: 0 });
 
   return (
     <div className="grid gap-4 sm:grid-cols-2">
@@ -244,10 +269,15 @@ function OverviewTab({ site }) {
         <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <CardTitle className="text-base">Site Info</CardTitle>
           <Link to={`/sites/${site.slug}/settings`} className="text-sm font-medium text-primary hover:underline">
-            Change PHP, domain, or port
+            Settings
           </Link>
         </CardHeader>
         <CardContent className="space-y-2 text-sm">
+          <Row
+            label="Name"
+            value={site.name}
+            editTo={`/sites/${site.slug}/settings`}
+          />
           <Row
             label="Domain/Port"
             value={site.domain ?? (site.port ? `Port ${site.port}` : '—')}
@@ -265,16 +295,72 @@ function OverviewTab({ site }) {
         </CardContent>
       </Card>
       <Card>
-        <CardHeader><CardTitle className="text-base">Last Deployment</CardTitle></CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
+          <CardTitle className="text-base">Last Deployment</CardTitle>
+          <Link to={`/sites/${site.slug}/deployments`} className="text-sm font-medium text-primary hover:underline">
+            History
+          </Link>
+        </CardHeader>
         <CardContent className="text-sm">
-          {commit ? (
+          {last ? (
             <div className="space-y-2">
-              <Row label="Status"  value={commit.status} />
-              <Row label="Commit"  value={commit.commit_sha?.slice(0, 8) ?? '—'} />
-              <Row label="By"      value={commit.triggered_by} />
-              <Row label="When"    value={timeAgo(commit.created_at)} />
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-muted-foreground">Status</span>
+                <Badge variant={last.status === 'success' ? 'success' : last.status === 'failed' ? 'destructive' : 'warning'}>
+                  {last.status}
+                </Badge>
+              </div>
+              <div className="flex items-start justify-between gap-2">
+                <span className="text-muted-foreground">Commit</span>
+                <span className="text-right min-w-0">
+                  {commitSha ? (
+                    <>
+                      <code className="font-medium">{commitSha}</code>
+                      {commitMsg ? (
+                        <p className="text-xs text-muted-foreground mt-0.5 break-words">{commitMsg}</p>
+                      ) : null}
+                    </>
+                  ) : (
+                    <span className="text-muted-foreground">Waiting for git…</span>
+                  )}
+                </span>
+              </div>
+              {git?.author && (liveSha === deploySha || !deploySha) ? (
+                <Row label="Author" value={git.author} />
+              ) : null}
+              <Row label="Branch" value={branch || '—'} />
+              <Row label="Triggered by" value={last.triggered_by || '—'} />
+              <Row label="Started" value={formatDateTime(last.created_at)} />
+              <Row
+                label={last.finished_at ? 'Finished' : 'Elapsed'}
+                value={last.finished_at
+                  ? `${formatDateTime(last.finished_at)} · ${formatDuration(last.created_at, last.finished_at)}`
+                  : formatDuration(last.created_at, null)}
+              />
+              {stepCounts.total > 0 ? (
+                <Row
+                  label="Steps"
+                  value={`${stepCounts.success ?? 0} ok · ${stepCounts.failed ?? 0} failed · ${stepCounts.skipped ?? 0} skipped`}
+                />
+              ) : null}
+              {deploySha && liveSha && deploySha !== liveSha ? (
+                <p className="text-xs text-muted-foreground pt-1">
+                  HEAD is now <code>{liveSha}</code>
+                  {git?.message ? ` — ${git.message}` : ''}.
+                </p>
+              ) : null}
             </div>
-          ) : <p className="text-muted-foreground">No deployments yet.</p>}
+          ) : git?.sha ? (
+            <div className="space-y-2">
+              <p className="text-muted-foreground">No deployments recorded yet. Current HEAD:</p>
+              <Row label="Commit" value={liveSha} />
+              {git.message ? <Row label="Message" value={git.message} /> : null}
+              {git.author ? <Row label="Author" value={git.author} /> : null}
+              <Row label="Branch" value={git.branch || site.deploy_branch || '—'} />
+            </div>
+          ) : (
+            <p className="text-muted-foreground">No deployments yet.</p>
+          )}
         </CardContent>
       </Card>
       <PathsCard site={site} className="sm:col-span-2" />
@@ -299,6 +385,7 @@ function OverviewTab({ site }) {
 /* ──────────────────────────────────────────────── */
 function SettingsTab({ site }) {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const showPhp = site.type === 'laravel' || site.type === 'php';
   const { data: installed = {} } = useQuery({
     queryKey: ['php-versions'],
@@ -306,6 +393,7 @@ function SettingsTab({ site }) {
   });
   const phpOptions = installedPhpVersions(installed, site.php_version);
 
+  const [name, setName] = useState(site.name);
   const [phpVersion, setPhpVersion] = useState(site.php_version);
   const [usePort, setUsePort] = useState(!site.domain);
   const [domain, setDomain] = useState(site.domain ?? '');
@@ -313,28 +401,37 @@ function SettingsTab({ site }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [saved, setSaved] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+  const [reauthOpen, setReauthOpen] = useState(false);
 
   useEffect(() => {
+    setName(site.name);
     setPhpVersion(site.php_version);
     setUsePort(!site.domain);
     setDomain(site.domain ?? '');
     setListenPort(site.port != null ? String(site.port) : '');
-  }, [site.id, site.php_version, site.domain, site.port]);
+  }, [site.id, site.name, site.php_version, site.domain, site.port]);
 
   const domainChanging = Boolean(site.ssl_status === 'active' && site.domain && (
     usePort || String(domain).trim() !== site.domain
   ));
 
   async function save() {
+    const trimmed = String(name).trim();
+    if (!trimmed) { setError('Name is required'); return; }
     const accessError = validateAccess({ usePort, domain, port: listenPort });
     if (accessError) { setError(accessError); return; }
     if (showPhp && !phpOptions.length) { setError('Install a PHP version first'); return; }
     setSaving(true); setError(''); setSaved(false);
     try {
-      await api.patch(`/api/sites/${site.slug}`, accessPayload({
-        phpVersion, usePort, domain, port: listenPort,
-      }));
+      await api.patch(`/api/sites/${site.slug}`, {
+        name: trimmed,
+        ...accessPayload({ phpVersion, usePort, domain, port: listenPort }),
+      });
       qc.invalidateQueries(['site', site.slug]);
+      qc.invalidateQueries(['sites']);
       setSaved(true);
     } catch (e) {
       setError(e.message);
@@ -343,32 +440,95 @@ function SettingsTab({ site }) {
     }
   }
 
+  async function destroy() {
+    setDeleting(true);
+    setDeleteError('');
+    try {
+      await api.delete(`/api/sites/${site.slug}`);
+      qc.invalidateQueries(['sites']);
+      setDeleteOpen(false);
+      navigate('/sites');
+    } catch (e) {
+      if (isReauthError(e)) {
+        setReauthOpen(true);
+      } else {
+        setDeleteError(e.message);
+      }
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   return (
-    <Card className="max-w-xl">
-      <CardHeader>
-        <CardTitle className="text-base">Change PHP, domain, or port</CardTitle>
-        <p className="text-sm font-normal text-muted-foreground">Edit how this site is reached and which PHP it runs.</p>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <SiteAccessFields
-          phpVersion={phpVersion}
-          onPhpVersion={setPhpVersion}
-          phpOptions={phpOptions}
-          showPhp={showPhp}
-          showAccess
-          usePort={usePort}
-          onUsePort={setUsePort}
-          domain={domain}
-          onDomain={setDomain}
-          port={listenPort}
-          onPort={setListenPort}
-          sslWarning={domainChanging}
-        />
-        {error && <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}
-        {saved && !error && <p className="text-sm text-green-600">Settings saved. Nginx and PHP-FPM were updated.</p>}
-        <Button onClick={save} loading={saving}>Save</Button>
-      </CardContent>
-    </Card>
+    <div className="space-y-4 max-w-xl">
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Site settings</CardTitle>
+          <p className="text-sm font-normal text-muted-foreground">Rename this site and change how it is reached.</p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-1.5">
+            <label htmlFor="site-name" className="text-sm font-medium">Name</label>
+            <Input
+              id="site-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              maxLength={80}
+              placeholder="My app"
+            />
+            <p className="text-xs text-muted-foreground">The URL slug <code>{site.slug}</code> stays the same.</p>
+          </div>
+          <SiteAccessFields
+            phpVersion={phpVersion}
+            onPhpVersion={setPhpVersion}
+            phpOptions={phpOptions}
+            showPhp={showPhp}
+            showAccess
+            usePort={usePort}
+            onUsePort={setUsePort}
+            domain={domain}
+            onDomain={setDomain}
+            port={listenPort}
+            onPort={setListenPort}
+            sslWarning={domainChanging}
+          />
+          {error && <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}
+          {saved && !error && <p className="text-sm text-green-600">Settings saved.</p>}
+          <Button onClick={save} loading={saving}>Save</Button>
+        </CardContent>
+      </Card>
+
+      <Card className="border-red-600/60">
+        <CardHeader>
+          <CardTitle className="text-base text-red-600">Danger zone</CardTitle>
+          <p className="text-sm font-normal text-muted-foreground">
+            Delete this site, its Nginx vhost, PHP pool, and system user. Databases are detached, not dropped.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {deleteError && <p className="text-sm text-destructive" role="alert">{deleteError}</p>}
+          <Button variant="destructive" onClick={() => { setDeleteError(''); setDeleteOpen(true); }}>
+            <Trash2 className="h-3.5 w-3.5" /> Delete site
+          </Button>
+        </CardContent>
+      </Card>
+
+      <DangerConfirmDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        title="Delete this site?"
+        description={`This permanently removes ${site.name} (${site.slug}), its web server config, PHP pool, and files. Type the slug to confirm.`}
+        confirmPhrase={site.slug}
+        confirmLabel="Delete site"
+        loading={deleting}
+        onConfirm={destroy}
+      />
+      <ReauthDialog
+        open={reauthOpen}
+        onOpenChange={setReauthOpen}
+        onSuccess={destroy}
+      />
+    </div>
   );
 }
 
@@ -603,12 +763,15 @@ function DeploymentsTab({ site }) {
                       <div className="flex items-center gap-2 flex-wrap">
                         <ChevronRight className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${open ? 'rotate-90' : ''}`} />
                         <Badge variant={d.status === 'success' ? 'success' : d.status === 'failed' ? 'destructive' : 'warning'}>{d.status}</Badge>
-                        <code className="text-xs">{d.commit_sha?.slice(0, 8) ?? '—'}</code>
-                        <span className="text-muted-foreground text-xs truncate">{d.commit_msg?.slice(0, 60)}</span>
+                        <code className="text-xs">{shortSha(d.commit_sha) ?? '—'}</code>
+                        <span className="text-muted-foreground text-xs truncate">{d.commit_msg?.slice(0, 80)}</span>
                       </div>
-                      <p className="text-xs text-muted-foreground pl-6">{d.triggered_by} · {timeAgo(d.created_at)}</p>
+                      <p className="text-xs text-muted-foreground pl-6">
+                        {d.triggered_by} · {timeAgo(d.created_at)}
+                        {d.finished_at ? ` · ${formatDuration(d.created_at, d.finished_at)}` : ''}
+                      </p>
                     </div>
-                    {d.status === 'success' && d.commit_sha && (
+                    {d.status === 'success' && shortSha(d.commit_sha) && (
                       <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); rollback(d.id); }}>
                         <RotateCcw className="h-3 w-3" /> Rollback
                       </Button>
@@ -1336,7 +1499,7 @@ function SSLTab({ site }) {
         {!site.domain ? (
           <p className="text-sm text-muted-foreground">
             Set a domain on the{' '}
-            <Link to={`/sites/${site.slug}/settings`} className="text-primary hover:underline">PHP & Domain</Link>
+            <Link to={`/sites/${site.slug}/settings`} className="text-primary hover:underline">Settings</Link>
             {' '}tab to issue an SSL certificate.
           </p>
         ) : (

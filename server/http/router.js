@@ -146,7 +146,7 @@ function parseCookies(str) {
 
 async function readBody(req) {
   const ct = req.headers['content-type'] ?? '';
-  if (!['POST','PUT','PATCH'].includes(req.method)) return;
+  if (!['POST','PUT','PATCH','DELETE'].includes(req.method)) return;
   const raw = await new Promise((resolve, reject) => {
     const chunks = [];
     req.on('data', (c) => chunks.push(c));
@@ -154,7 +154,9 @@ async function readBody(req) {
     req.on('error', reject);
   });
   if (ct.includes('application/json')) {
-    try { req.body = JSON.parse(raw); } catch { throw new Error('Invalid JSON body'); }
+    const text = raw.toString('utf8').trim();
+    if (!text) { req.body = {}; return; }
+    try { req.body = JSON.parse(text); } catch { throw new Error('Invalid JSON body'); }
   } else if (ct.includes('multipart/form-data')) {
     req.rawBody = raw;
   } else {

@@ -7,20 +7,12 @@ import Input from '../components/ui/Input.jsx';
 import SiteAccessFields, {
   accessPayload, installedPhpVersions, validateAccess,
 } from '../components/SiteAccessFields.jsx';
-import { CheckCircle, Copy, ExternalLink, ChevronRight, ChevronLeft, GripVertical, Plus, Trash2 } from 'lucide-react';
+import { CheckCircle, Copy, ExternalLink, ChevronRight, ChevronLeft } from 'lucide-react';
+import DeployRecipeEditor, {
+  DEFAULT_LARAVEL_RECIPE, normalizeRecipeSteps, toApiSteps,
+} from '../components/DeployRecipeEditor.jsx';
 
 const STEPS = ['Type', 'Repository', 'Domain / Port', 'Deploy Key', 'Recipe'];
-
-const DEFAULT_STEPS_LARAVEL = [
-  { cmd: 'test -f .env || cp .env.example .env', first_only: 1, enabled: 1 },
-  { cmd: 'composer install --no-dev --optimize-autoloader --no-interaction', first_only: 0, enabled: 1 },
-  { cmd: 'php artisan key:generate', first_only: 1, enabled: 1 },
-  { cmd: 'php artisan storage:link', first_only: 1, enabled: 1 },
-  { cmd: 'php artisan migrate --force', first_only: 0, enabled: 1 },
-  { cmd: 'npm ci && npm run build', first_only: 0, enabled: 0 },
-  { cmd: 'php artisan optimize', first_only: 0, enabled: 1 },
-  { cmd: 'php artisan queue:restart', first_only: 0, enabled: 1 },
-];
 
 function parseRepoName(url) {
   if (!url) return '';
@@ -48,7 +40,7 @@ export default function SiteWizardPage() {
   const [listenPort, setListenPort] = useState('');
   const [phpVersion, setPhpVersion] = useState('8.3');
   const [phpInstalled, setPhpInstalled] = useState({});
-  const [deploySteps, setDeploySteps] = useState(DEFAULT_STEPS_LARAVEL);
+  const [deploySteps, setDeploySteps] = useState(() => normalizeRecipeSteps(DEFAULT_LARAVEL_RECIPE));
 
   const showPhp = type === 'laravel' || type === 'php';
   const phpOptions = installedPhpVersions(phpInstalled);
@@ -114,7 +106,7 @@ export default function SiteWizardPage() {
   async function saveStepsAndDeploy() {
     setLoading(true); setError('');
     try {
-      await api.put(`/api/sites/${site.slug}/wizard/steps`, { steps: deploySteps });
+      await api.put(`/api/sites/${site.slug}/wizard/steps`, { steps: toApiSteps(deploySteps) });
       await api.post(`/api/sites/${site.slug}/deploy`, {});
     } catch (e) { setError(e.message); setLoading(false); return; }
     navigate(`/sites/${site.slug}/deployments`);
@@ -272,45 +264,8 @@ export default function SiteWizardPage() {
           {/* Step 4: Recipe */}
           {step === 4 && (
             <div className="space-y-4">
-              <p className="text-sm text-muted-foreground">Reorder, toggle, or edit the commands that run after each deploy. First-deploy-only steps only run on the initial clone.</p>
-              <div className="space-y-2">
-                {deploySteps.map((s, i) => (
-                  <div key={i} className="flex items-center gap-2 rounded-lg border border-border p-2">
-                    <GripVertical className="h-4 w-4 text-muted-foreground shrink-0" />
-                    <div className="flex-1 space-y-1">
-                      <Input
-                        className="h-7 font-mono text-xs"
-                        value={s.cmd}
-                        onChange={(e) => {
-                          const next = [...deploySteps];
-                          next[i] = { ...next[i], cmd: e.target.value };
-                          setDeploySteps(next);
-                        }}
-                      />
-                      <div className="flex gap-3 text-xs text-muted-foreground">
-                        <label className="flex items-center gap-1 cursor-pointer">
-                          <input type="checkbox" checked={Boolean(s.enabled)} onChange={(e) => {
-                            const next = [...deploySteps]; next[i] = { ...next[i], enabled: e.target.checked ? 1 : 0 }; setDeploySteps(next);
-                          }} />
-                          Enabled
-                        </label>
-                        <label className="flex items-center gap-1 cursor-pointer">
-                          <input type="checkbox" checked={Boolean(s.first_only)} onChange={(e) => {
-                            const next = [...deploySteps]; next[i] = { ...next[i], first_only: e.target.checked ? 1 : 0 }; setDeploySteps(next);
-                          }} />
-                          First deploy only
-                        </label>
-                      </div>
-                    </div>
-                    <button onClick={() => setDeploySteps(deploySteps.filter((_, j) => j !== i))} className="text-destructive hover:opacity-70">
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
-                ))}
-                <Button variant="outline" size="sm" onClick={() => setDeploySteps([...deploySteps, { cmd: '', first_only: 0, enabled: 1 }])}>
-                  <Plus className="h-3 w-3" /> Add step
-                </Button>
-              </div>
+              <p className="text-sm text-muted-foreground">Reorder, toggle, or edit the commands that run after each deploy. First-deploy-only steps only run on the initial clone. Use the arrows or drag the handle to change order.</p>
+              <DeployRecipeEditor steps={deploySteps} onChange={setDeploySteps} />
             </div>
           )}
 

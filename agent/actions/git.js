@@ -8,11 +8,17 @@ function siteKeyPath(slug) {
 }
 
 function gitEnv(slug) {
-  const keyPath = siteKeyPath(slug);
-  return {
+  const env = {
     ...process.env,
-    GIT_SSH_COMMAND: `ssh -i ${keyPath} -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o BatchMode=yes`,
+    GIT_CONFIG_COUNT: '1',
+    GIT_CONFIG_KEY_0: 'safe.directory',
+    GIT_CONFIG_VALUE_0: '*',
   };
+  if (slug) {
+    const keyPath = siteKeyPath(slug);
+    env.GIT_SSH_COMMAND = `ssh -i ${keyPath} -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o BatchMode=yes`;
+  }
+  return env;
 }
 
 function runGit(args, cwd, env, emit, timeout = 120_000) {
@@ -144,7 +150,11 @@ export const log = {
   async run({ slug, n = 20 }) {
     const cwd = join(SITES_ROOT, slug, 'app');
     try {
-      const out = execFileSync('git', ['log', `--max-count=${Math.min(n,100)}`, '--oneline', '--no-color'], { cwd, encoding: 'utf8' });
+      const out = execFileSync(
+        'git',
+        ['log', `--max-count=${Math.min(n,100)}`, '--oneline', '--no-color'],
+        { cwd, encoding: 'utf8', env: gitEnv(slug) },
+      );
       return out.trim().split('\n').filter(Boolean).map((l) => {
         const [sha, ...msg] = l.split(' ');
         return { sha, message: msg.join(' ') };
@@ -158,10 +168,31 @@ export const currentCommit = {
   async run({ slug }) {
     const cwd = join(SITES_ROOT, slug, 'app');
     try {
-      const sha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd, encoding: 'utf8' }).trim();
-      const msg = execFileSync('git', ['log', '-1', '--format=%s'], { cwd, encoding: 'utf8' }).trim();
-      const branch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd, encoding: 'utf8' }).trim();
-      return { sha, message: msg, branch };
-    } catch { return { sha: null, message: null, branch: null }; }
+      const env = gitEnv(slug);
+      const sha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd, encoding: 'utf8', env }).trim();
+      const meta = execFileSync(
+        'git',
+        ['log', '-1', '--format=%s%x1f%an%x1f%ae%x1f%aI%x1f%h'],
+        { cwd, encoding: 'utf8', env },
+      ).trim();
+      const [message, author, email, date, short] = meta.split('\x1f');
+      let branch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd, encoding: 'utf8', env }).trim();
+      if (branch === 'HEAD') {
+        try {
+          branch = execFileSync('git', ['name-rev', '--name-only', 'HEAD'], { cwd, encoding: 'utf8', env }).trim();
+        } catch { branch = 'HEAD'; }
+      }
+      return {
+        sha: sha || null,
+        short: short || (sha ? sha.slice(0, 8) : null),
+        message: message || null,
+        author: author || null,
+        email: email || null,
+        date: date || null,
+        branch: branch || null,
+      };
+    } catch {
+      return { sha: null, short: null, message: null, author: null, email: null, date: null, branch: null };
+    }
   },
 };

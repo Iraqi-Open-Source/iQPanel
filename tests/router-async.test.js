@@ -51,4 +51,42 @@ describe('async route errors', () => {
       server.close();
     }
   });
+
+  test('DELETE JSON body is parsed before the handler', async () => {
+    const app = new Router();
+    app.delete('/rule', (req, res) => res.json(req.body ?? null));
+    const { server, port } = await listen(app);
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/rule`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ number: 4, confirm: true }),
+      });
+      assert.equal(res.status, 200);
+      const body = await res.json();
+      assert.equal(body.number, 4);
+      assert.equal(body.confirm, true);
+    } finally {
+      server.close();
+    }
+  });
+
+  test('DELETE with empty JSON body is treated as {}', async () => {
+    const app = new Router();
+    app.delete('/sites/:slug', (req, res) => res.json({ ok: true, slug: req.params.slug, body: req.body }));
+    const { server, port } = await listen(app);
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/sites/demo`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      assert.equal(res.status, 200);
+      const body = await res.json();
+      assert.equal(body.ok, true);
+      assert.equal(body.slug, 'demo');
+      assert.deepEqual(body.body, {});
+    } finally {
+      server.close();
+    }
+  });
 });

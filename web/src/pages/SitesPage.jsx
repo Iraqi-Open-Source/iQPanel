@@ -96,7 +96,7 @@ function SiteCard({ site }) {
           className={buttonClassName({ variant: 'outline', size: 'sm', className: 'w-full' })}
         >
           <Settings className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-          Change PHP / domain / port
+          Settings
         </Link>
       </CardContent>
     </Card>

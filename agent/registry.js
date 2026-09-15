@@ -98,6 +98,9 @@ export const registry = new Map([
   ['fw.allow',              fw.allow],
   ['fw.deny',               fw.deny],
   ['fw.delete',             fw.deleteRule],
+  ['fw.enable',             fw.enable],
+  ['fw.disable',            fw.disable],
+  ['fw.default',            fw.setDefault],
   ['fw.listeners',          fw.listeners],
 
   // files (path-constrained)

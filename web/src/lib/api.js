@@ -45,7 +45,7 @@ export const api = {
   post:   (url, body, opts)    => apiFetch(url, { method: 'POST',   body: JSON.stringify(body), ...opts }),
   put:    (url, body, opts)    => apiFetch(url, { method: 'PUT',    body: JSON.stringify(body), ...opts }),
   patch:  (url, body, opts)    => apiFetch(url, { method: 'PATCH',  body: JSON.stringify(body), ...opts }),
-  delete: (url, body, opts)    => apiFetch(url, { method: 'DELETE', body: body ? JSON.stringify(body) : undefined, ...opts }),
+  delete: (url, body, opts)    => apiFetch(url, { method: 'DELETE', body: JSON.stringify(body ?? {}), ...opts }),
 };
 
 export function sseMessage(d) {

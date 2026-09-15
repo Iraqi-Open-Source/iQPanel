@@ -13,8 +13,9 @@ import { formatBytes, timeAgo } from '../lib/utils.js';
 import SiteAccessFields, {
   accessPayload, installedPhpVersions, validateAccess,
 } from '../components/SiteAccessFields.jsx';
+import DeployRecipeEditor, { normalizeRecipeSteps, toApiSteps } from '../components/DeployRecipeEditor.jsx';
 import {
-  Play, RefreshCw, ArrowLeft, Copy, Terminal, FileText,
+  Play, RefreshCw, ArrowLeft, Copy, FileText,
   Database, Clock, Shield, Archive, Globe, AlertCircle,
   CheckCircle, ChevronRight, Settings, RotateCcw,
   FilePlus, Folder, File,
@@ -33,7 +34,6 @@ const TABS = [
   { id: 'cron',        label: 'Cron' },
   { id: 'logs',        label: 'Logs' },
   { id: 'ssl',         label: 'SSL' },
-  { id: 'terminal',    label: 'Terminal' },
 ];
 
 const SHORTCUTS = [
@@ -94,14 +94,58 @@ export default function SiteDetailPage() {
   const { slug, tab = 'overview' } = useParams();
   const navigate    = useNavigate();
   const qc          = useQueryClient();
-  const [activeTab, setActiveTab] = useState(tab);
+  const [activeTab, setActiveTab] = useState(tab === 'terminal' ? 'overview' : tab);
+  const [deployOpen, setDeployOpen] = useState(false);
+  const [recipeSteps, setRecipeSteps] = useState([]);
+  const [recipeLoading, setRecipeLoading] = useState(false);
+  const [deploying, setDeploying] = useState(false);
+  const [deployError, setDeployError] = useState('');
 
   const { data: site, isLoading } = useQuery({
     queryKey: ['site', slug],
     queryFn: () => api.get(`/api/sites/${slug}`),
   });
 
-  useEffect(() => { setActiveTab(tab); }, [tab]);
+  useEffect(() => {
+    if (tab === 'terminal') {
+      navigate(`/sites/${slug}/overview`, { replace: true });
+      setActiveTab('overview');
+      return;
+    }
+    setActiveTab(tab);
+  }, [tab, slug, navigate]);
+
+  async function openDeployDialog() {
+    setDeployOpen(true);
+    setDeployError('');
+    setRecipeLoading(true);
+    try {
+      const steps = await api.get(`/api/sites/${slug}/wizard/steps`);
+      setRecipeSteps(normalizeRecipeSteps(Array.isArray(steps) ? steps : []));
+    } catch (e) {
+      setDeployError(e.message);
+      setRecipeSteps([]);
+    } finally {
+      setRecipeLoading(false);
+    }
+  }
+
+  async function confirmDeploy() {
+    setDeploying(true);
+    setDeployError('');
+    try {
+      await api.put(`/api/sites/${slug}/wizard/steps`, { steps: toApiSteps(recipeSteps) });
+      await api.post(`/api/sites/${slug}/deploy`, {});
+      qc.invalidateQueries(['site', slug]);
+      qc.invalidateQueries(['deployments', slug]);
+      setDeployOpen(false);
+      navigate(`/sites/${slug}/deployments`);
+    } catch (e) {
+      setDeployError(e.message);
+    } finally {
+      setDeploying(false);
+    }
+  }
 
   if (isLoading) return <div className="flex justify-center p-16"><Spinner size="lg" /></div>;
   if (!site)     return <div className="p-8 text-center text-muted-foreground">Site not found.</div>;
@@ -124,13 +168,7 @@ export default function SiteDetailPage() {
               <Settings className="h-3 w-3" /> PHP & Domain
             </Link>
           </Button>
-          <Button size="sm" onClick={() => {
-            api.post(`/api/sites/${slug}/deploy`, {}).then(() => {
-              qc.invalidateQueries(['site', slug]);
-              qc.invalidateQueries(['deployments', slug]);
-              navigate(`/sites/${slug}/deployments`);
-            }).catch((e) => alert(e.message));
-          }}>
+          <Button size="sm" onClick={openDeployDialog}>
             <RefreshCw className="h-3 w-3" /> Deploy
           </Button>
         </div>
@@ -163,7 +201,30 @@ export default function SiteDetailPage() {
       {activeTab === 'cron'        && <CronTab        site={site} />}
       {activeTab === 'logs'        && <LogsTab        site={site} />}
       {activeTab === 'ssl'         && <SSLTab         site={site} />}
-      {activeTab === 'terminal'    && <TerminalTab    site={site} />}
+
+      <Dialog open={deployOpen} onOpenChange={(open) => { if (!deploying) setDeployOpen(open); }}>
+        <DialogContent title="Post-pull commands" className="max-h-[85vh] max-w-2xl overflow-y-auto">
+          <DialogDescription className="text-sm text-muted-foreground">
+            Review the commands that run after git pull. Add, edit, reorder, or remove them, then deploy.
+          </DialogDescription>
+          <div className="max-h-[55vh] overflow-y-auto pr-1">
+            {recipeLoading ? (
+              <div className="flex justify-center py-8"><Spinner /></div>
+            ) : (
+              <DeployRecipeEditor steps={recipeSteps} onChange={setRecipeSteps} />
+            )}
+          </div>
+          {deployError && <p className="text-sm text-destructive" role="alert">{deployError}</p>}
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => setDeployOpen(false)} disabled={deploying}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={confirmDeploy} loading={deploying} disabled={recipeLoading}>
+              <RefreshCw className="h-3 w-3" /> Save and deploy
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -1291,49 +1352,6 @@ function SSLTab({ site }) {
             {output && <pre className="rounded-md bg-gray-950 text-green-400 font-mono text-xs p-3 h-48 overflow-y-auto">{output}</pre>}
           </>
         )}
-      </CardContent>
-    </Card>
-  );
-}
-
-/* ──────────────────────────────────────────────── */
-/* Terminal                                         */
-/* ──────────────────────────────────────────────── */
-function TerminalTab({ site }) {
-  const ref = useRef(null);
-  const [ready, setReady] = useState(false);
-
-  useEffect(() => {
-    let term, ws;
-    (async () => {
-      const { Terminal }  = await import('@xterm/xterm');
-      const { FitAddon }  = await import('@xterm/addon-fit');
-      term = new Terminal({ cursorBlink: true, theme: { background: '#030712', foreground: '#4ade80' } });
-      const fit = new FitAddon();
-      term.loadAddon(fit);
-      term.open(ref.current);
-      fit.fit();
-      setReady(true);
-
-      const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-      ws = new WebSocket(`${proto}//${location.host}/api/terminal/connect?site=${site.slug}`);
-      ws.onmessage  = (e) => term.write(e.data);
-      ws.onclose    = () => term.write('\r\n[Session closed]\r\n');
-      term.onData   = (data) => ws.readyState === WebSocket.OPEN && ws.send(data);
-
-      window.addEventListener('resize', () => fit.fit());
-    })();
-
-    return () => { ws?.close(); term?.dispose(); };
-  }, [site.slug]);
-
-  return (
-    <Card className="overflow-hidden">
-      <CardHeader className="p-3">
-        <p className="text-xs text-muted-foreground">Terminal — running as <code>{site.run_as_user || site.slug}</code></p>
-      </CardHeader>
-      <CardContent className="p-0">
-        <div ref={ref} className="h-[500px] w-full bg-gray-950" />
       </CardContent>
     </Card>
   );

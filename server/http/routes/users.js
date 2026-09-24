@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { query, get, run } from '../../data/db.js';
 import { hashPassword } from '../session.js';
 import { requireAuth } from '../middleware.js';
-import { rbac } from '../rbac.js';
+import { rbac, canSeeUser } from '../rbac.js';
 import { auditLog } from '../../domain/audit.js';
 
 function uuid()   { return randomBytes(16).toString('hex'); }
@@ -15,7 +15,8 @@ function sanitizeUser(u) {
 
 export function registerUsers(app) {
   app.get('/api/users', requireAuth, rbac('admin'), (req, res) => {
-    res.json(query('SELECT * FROM users ORDER BY created_at').map(sanitizeUser));
+    const users = query('SELECT * FROM users ORDER BY created_at').map(sanitizeUser);
+    res.json(users.filter((u) => canSeeUser(req.user, u)));
   });
 
   app.post('/api/users', requireAuth, rbac('owner'), (req, res) => {

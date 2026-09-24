@@ -47,7 +47,7 @@ export function registerExec(app) {
       sse.close();
     };
 
-    stream('exec.run', { slug: site.slug, cmd }, (t, d) => {
+    stream('exec.run', { slug: site.slug, cmd, php_version: site.php_version }, (t, d) => {
       if (t === 'stdout' || t === 'stderr') {
         const line = typeof d === 'string' ? d : String(d ?? '');
         sse.send(t, { line });
@@ -89,7 +89,7 @@ export function registerExec(app) {
       sse.close();
     };
 
-    stream('exec.run', { slug: site.slug, cmd: normalized }, (t, d) => {
+    stream('exec.run', { slug: site.slug, cmd: normalized, php_version: site.php_version }, (t, d) => {
       if (t === 'stdout' || t === 'stderr') sse.send(t, { line: typeof d === 'string' ? d : String(d ?? '') });
       else if (t === 'result') finish('done', { code: d?.code ?? 0 });
       else if (t === 'error')  finish('error', { message: typeof d === 'string' ? d : (d?.message ?? 'Command failed') });

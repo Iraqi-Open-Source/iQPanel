@@ -30,6 +30,14 @@ export function appendStepOutput(id, chunk) {
   run(`UPDATE deployment_steps SET output = COALESCE(output,'') || ? WHERE id = ?`, [String(chunk), id]);
 }
 
+/** Exit status from an agent result. Git and other actions omit `code` and count as success. */
+export function commandExitCode(result) {
+  if (result == null || typeof result !== 'object' || Array.isArray(result)) return 0;
+  if (result.code == null || result.code === '') return 0;
+  const code = Number(result.code);
+  return Number.isFinite(code) ? code : 0;
+}
+
 export function finishStep(id, { status, exit_code = null, extra = '' } = {}) {
   if (extra) appendStepOutput(id, extra);
   run(

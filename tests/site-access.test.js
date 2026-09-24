@@ -164,6 +164,21 @@ describe('applySiteAccess', () => {
     const vhost = calls.find((c) => c.action === 'nginx.write_vhost');
     assert.match(vhost.args.content, /php8\.4-fpm-site-a\.sock/);
     assert.match(vhost.args.content, /listen 80/);
+    assert.doesNotMatch(vhost.args.content, /listen 443/);
+  });
+
+  test('installs the site certificate on port 443 when SSL is active', async () => {
+    const site = insertSite({ php_version: '8.4', domain: 'app.example.com', ssl_status: 'active' });
+    const calls = [];
+    const invokeFn = async (action, args) => {
+      calls.push({ action, args });
+      return {};
+    };
+    await applySiteAccess(site, { php_version: '8.4', domain: 'app.example.com', port: null, ssl_status: 'active' }, { invokeFn });
+    const vhost = calls.find((c) => c.action === 'nginx.write_vhost');
+    assert.match(vhost.args.content, /listen 443 ssl/);
+    assert.match(vhost.args.content, /\/etc\/letsencrypt\/live\/app\.example\.com\/fullchain\.pem/);
+    assert.match(vhost.args.content, /return 301 https:\/\/\$host\$request_uri/);
   });
 
   test('rewrites queue units and scheduler cron when PHP version changes', async () => {

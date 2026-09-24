@@ -1,9 +1,48 @@
 import { spawn } from 'node:child_process';
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync, symlinkSync, unlinkSync, chmodSync } from 'node:fs';
 import { join } from 'node:path';
 import { SITES_ROOT, siteUserName, chownToSiteUser } from '../lib/site-user.js';
+import { PHP_VERSIONS } from './php.js';
 
 const MAX_OUTPUT = 1 * 1024 * 1024; // 1 MB
+const BASE_PATH = '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin';
+const COMPOSER_CANDIDATES = ['/usr/local/bin/composer', '/usr/bin/composer'];
+
+export function composerWrapper(phpBin, composerBin) {
+  return `#!/bin/sh\nexec ${phpBin} ${composerBin} "$@"\n`;
+}
+
+/**
+ * Put the site's PHP ahead of the system default so `php` and `composer`
+ * (including composer's shebang) use the version selected for the site.
+ */
+export function installPhpShims(dir, { phpBin, composerBins = COMPOSER_CANDIDATES, exists = existsSync } = {}) {
+  mkdirSync(dir, { recursive: true });
+  chmodSync(dir, 0o755);
+  const link = join(dir, 'php');
+  try { unlinkSync(link); } catch {}
+  symlinkSync(phpBin, link);
+  const composerBin = composerBins.find((p) => exists(p));
+  if (composerBin) {
+    const wrapper = join(dir, 'composer');
+    writeFileSync(wrapper, composerWrapper(phpBin, composerBin), { mode: 0o755 });
+    chmodSync(wrapper, 0o755);
+  }
+  return dir;
+}
+
+function assertPhpVersion(version) {
+  if (version == null || version === '') return;
+  if (!PHP_VERSIONS.includes(String(version))) throw new Error(`Unsupported PHP version: ${version}`);
+}
+
+function sitePhpPath(home, version) {
+  if (!version) return BASE_PATH;
+  const phpBin = `/usr/bin/php${version}`;
+  if (!existsSync(phpBin)) throw new Error(`PHP ${version} CLI is not installed`);
+  const dir = installPhpShims(join(home, '.php-bin'), { phpBin });
+  return `${dir}:${BASE_PATH}`;
+}
 
 function validateSlug(slug) {
   if (!slug || !/^[a-z0-9-]+$/.test(slug)) throw new Error('Invalid slug');
@@ -26,22 +65,23 @@ export function buildExecScript(cmd) {
 
 export const run = {
   timeout: 300_000,
-  validate({ slug, cmd }) {
+  validate({ slug, cmd, php_version }) {
     validateSlug(slug);
     if (!cmd || typeof cmd !== 'string') throw new Error('cmd required');
     if (cmd.length > 4096) throw new Error('cmd too long');
+    assertPhpVersion(php_version);
   },
-  async run({ slug, cmd, env: extraEnv = {} }, emit) {
+  async run({ slug, cmd, php_version, env: extraEnv = {} }, emit) {
     const { home, app, user } = ensureSiteApp(slug);
 
     const safeEnv = {
       HOME: home,
       USER: user,
       LOGNAME: user,
-      PATH: '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
       SHELL: '/bin/bash',
       COMPOSER_HOME: join(home, '.composer'),
       ...extraEnv,
+      PATH: sitePhpPath(home, php_version),
     };
 
     const script = buildExecScript(cmd);

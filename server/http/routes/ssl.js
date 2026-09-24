@@ -1,5 +1,6 @@
 import { stream, invoke } from '../../agent-client.js';
 import { get, run } from '../../data/db.js';
+import { applySiteAccess } from '../../domain/site-access.js';
 import { requireAuth } from '../middleware.js';
 import { rbac } from '../rbac.js';
 
@@ -12,16 +13,29 @@ export function registerSSL(app) {
     if (!site) return res.status(404).json({ error: 'Site not found' });
     if (!site.domain) return res.status(400).json({ error: 'No domain set on this site' });
 
-    const { email } = req.body ?? {};
-    if (!email) return res.status(400).json({ error: 'email required' });
+    const email = String(req.body?.email ?? '').trim();
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: 'Invalid email' });
+    }
 
     const sse = res.sse();
-    stream('ssl.issue', { domain: site.domain, email, nginx: true }, (t, d) => {
+    stream('ssl.issue', { domain: site.domain, ...(email ? { email } : {}), nginx: true }, (t, d) => {
       if (t === 'stdout' || t === 'stderr') sse.send(t, { line: d });
       else if (t === 'result') {
         run('UPDATE sites SET ssl_status = ?, updated_at = ? WHERE id = ?', ['active', nowIso(), site.id]);
-        sse.send('done', { ok: true });
-        sse.close();
+        applySiteAccess(site, {
+          php_version: site.php_version,
+          domain: site.domain,
+          port: site.port,
+          webserver: site.webserver,
+          ssl_status: 'active',
+        }).then(() => {
+          sse.send('done', { ok: true });
+          sse.close();
+        }).catch((e) => {
+          sse.send('error', { message: e.message });
+          sse.close();
+        });
       } else if (t === 'error') { sse.send('error', { message: d }); sse.close(); }
     }).catch((e) => { sse.send('error', { message: e.message }); sse.close(); });
   });

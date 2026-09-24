@@ -171,14 +171,15 @@ export async function applySiteAccess(site, next, { invokeFn = invoke } = {}) {
   const port = next.port ?? null;
   const siteUser = site.run_as_user || siteUserName(slug);
   const directory = site.directory || `/var/www/sites/${slug}`;
+  const ssl = Boolean(domain) && (next.ssl_status ?? site.ssl_status) === 'active';
   const oldPhp = site.php_version;
   const oldPort = site.port != null ? Number(site.port) : null;
   const oldDomain = site.domain || null;
 
   if (webserver === 'nginx') {
     const vhostContent = type === 'laravel'
-      ? buildLaravelVhost({ slug, domain, port, phpVersion, siteUser })
-      : buildNginxVhost({ slug, type, domain, port, phpVersion, siteUser });
+      ? buildLaravelVhost({ slug, domain, port, phpVersion, siteUser, ssl })
+      : buildNginxVhost({ slug, type, domain, port, phpVersion, siteUser, ssl });
 
     await invokeFn('nginx.write_vhost', { slug, content: vhostContent });
 

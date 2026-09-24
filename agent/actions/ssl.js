@@ -5,7 +5,20 @@ function validateDomain(domain) {
 }
 
 function validateEmail(email) {
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('Invalid email');
+  const trimmed = String(email ?? '').trim();
+  if (!trimmed) return '';
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) throw new Error('Invalid email');
+  return trimmed;
+}
+
+export function issueArgs({ domain, email, webroot, nginx = true }) {
+  const args = ['certonly', '--non-interactive', '--agree-tos', '-d', domain];
+  const trimmed = String(email ?? '').trim();
+  if (trimmed) args.push('-m', trimmed);
+  else args.push('--register-unsafely-without-email');
+  if (nginx && !webroot) args.push('--nginx');
+  else if (webroot) args.push('--webroot', '-w', webroot);
+  return args;
 }
 
 function certbotRun(args, emit) {
@@ -28,10 +41,7 @@ export const issue = {
     validateEmail(email);
   },
   async run({ domain, email, webroot, nginx = true }, emit) {
-    const args = ['--non-interactive', '--agree-tos', '-m', email, '-d', domain];
-    if (nginx && !webroot) args.push('--nginx');
-    else if (webroot) args.push('--webroot', '-w', webroot);
-    await certbotRun(['certonly', ...args], emit);
+    await certbotRun(issueArgs({ domain, email, webroot, nginx }), emit);
     return { domain, issued: true };
   },
 };

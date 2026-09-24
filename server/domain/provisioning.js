@@ -2,14 +2,39 @@
  * Nginx vhost and PHP-FPM pool template builders.
  */
 
-export function buildLaravelVhost({ slug, domain, port, phpVersion, siteUser }) {
-  const listen = domain ? `${domain}` : `0.0.0.0:${port}`;
+function tlsDirectives(domain) {
+  return `listen 443 ssl;
+    listen [::]:443 ssl;
+    ssl_certificate /etc/letsencrypt/live/${domain}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${domain}/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;`;
+}
+
+function httpToHttps(domain, root) {
+  return `server {
+    listen 80;
+    listen [::]:80;
+    server_name ${domain};
+    location ^~ /.well-known/acme-challenge/ {
+        root ${root};
+        default_type "text/plain";
+    }
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+`;
+}
+
+export function buildLaravelVhost({ slug, domain, port, phpVersion, siteUser, ssl = false }) {
   const serverName = domain ?? `_`;
   const root = `/var/www/sites/${slug}/app/public`;
   const socket = `/run/php/php${phpVersion}-fpm-${slug}.sock`;
+  const useSsl = Boolean(ssl && domain);
 
-  return `server {
-    listen ${domain ? '80' : port};
+  return `${useSsl ? httpToHttps(domain, root) : ''}server {
+    ${useSsl ? tlsDirectives(domain) : `listen ${domain ? '80' : port};`}
     server_name ${serverName};
     root ${root};
     index index.php;
@@ -44,15 +69,16 @@ export function buildLaravelVhost({ slug, domain, port, phpVersion, siteUser }) 
 `;
 }
 
-export function buildNginxVhost({ slug, type, domain, port, phpVersion, siteUser }) {
-  if (type === 'php' || type === 'laravel') return buildLaravelVhost({ slug, domain, port, phpVersion, siteUser });
+export function buildNginxVhost({ slug, type, domain, port, phpVersion, siteUser, ssl = false }) {
+  if (type === 'php' || type === 'laravel') return buildLaravelVhost({ slug, domain, port, phpVersion, siteUser, ssl });
 
   const root = `/var/www/sites/${slug}/app`;
+  const useSsl = Boolean(ssl && domain);
   const listen = domain ? '80' : port;
 
   if (type === 'static') {
-    return `server {
-    listen ${listen};
+    return `${useSsl ? httpToHttps(domain, root) : ''}server {
+    ${useSsl ? tlsDirectives(domain) : `listen ${listen};`}
     server_name ${domain ?? '_'};
     root ${root};
     index index.html;
@@ -64,8 +90,8 @@ export function buildNginxVhost({ slug, type, domain, port, phpVersion, siteUser
   }
 
   if (type === 'node') {
-    return `server {
-    listen ${listen};
+    return `${useSsl ? httpToHttps(domain, root) : ''}server {
+    ${useSsl ? tlsDirectives(domain) : `listen ${listen};`}
     server_name ${domain ?? '_'};
     location / {
         proxy_pass http://127.0.0.1:${port ?? 3000};
@@ -81,7 +107,7 @@ export function buildNginxVhost({ slug, type, domain, port, phpVersion, siteUser
 `;
   }
 
-  return buildLaravelVhost({ slug, domain, port, phpVersion, siteUser });
+  return buildLaravelVhost({ slug, domain, port, phpVersion, siteUser, ssl });
 }
 
 export function buildPhpFpmPool({ slug, phpVersion, siteUser, directory }) {

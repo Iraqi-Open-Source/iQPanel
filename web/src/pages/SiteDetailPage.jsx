@@ -1476,10 +1476,10 @@ function SSLTab({ site }) {
   const [loading, setLoading] = useState(false);
 
   async function issue() {
-    if (!email) return;
-    setLoading(true); setOutput('');
+    setLoading(true); setOutput('Issuing certificate…\n');
+    const trimmed = email.trim();
     try {
-      await postSSE(`/api/sites/${site.slug}/ssl/issue`, { email }, {
+      await postSSE(`/api/sites/${site.slug}/ssl/issue`, trimmed ? { email: trimmed } : {}, {
         stdout: (d) => setOutput((o) => o + (d.line ?? '')),
         stderr: (d) => setOutput((o) => o + (d.line ?? '')),
         done:   () => { qc.invalidateQueries(['site', site.slug]); },
@@ -1508,9 +1508,12 @@ function SSLTab({ site }) {
               <span className="text-sm">Domain: <strong>{site.domain}</strong></span>
               <Badge variant={site.ssl_status === 'active' ? 'success' : 'secondary'}>{site.ssl_status}</Badge>
             </div>
-            <div className="flex gap-2">
-              <Input className="flex-1" type="email" placeholder="admin@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
-              <Button size="sm" onClick={issue} loading={loading}>Issue cert</Button>
+            <div className="space-y-1.5">
+              <div className="flex gap-2">
+                <Input className="flex-1" type="email" placeholder="Optional email" value={email} onChange={(e) => setEmail(e.target.value)} />
+                <Button size="sm" type="button" onClick={issue} loading={loading}>Issue cert</Button>
+              </div>
+              <p className="text-xs text-muted-foreground">Leave the email blank to issue the certificate without one.</p>
             </div>
             {output && <pre className="rounded-md bg-gray-950 text-green-400 font-mono text-xs p-3 h-48 overflow-y-auto">{output}</pre>}
           </>

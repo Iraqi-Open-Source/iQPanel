@@ -29,3 +29,9 @@ export function rbac(required, { reauth = false } = {}) {
 }
 
 export const ROLES = Object.keys(RANK);
+
+/** Admins manage the panel, but owner accounts stay visible only to owners. */
+export function canSeeUser(viewer, target) {
+  if (target?.role === 'owner' && viewer?.role !== 'owner') return false;
+  return true;
+}

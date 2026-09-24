@@ -23,7 +23,7 @@ import { join } from 'node:path';
 import { query, get, run } from './data/db.js';
 import { invoke, stream } from './agent-client.js';
 import { nextQueuedJob, markJobRunning, recoverStaleRunningJobs, nowIso } from './domain/jobs.js';
-import { createStep, appendStepOutput, finishStep, normalizeRecipeCmd } from './domain/deploy-steps.js';
+import { createStep, appendStepOutput, finishStep, normalizeRecipeCmd, commandExitCode } from './domain/deploy-steps.js';
 
 const DATA_ROOT  = process.env.PANEL_DATA_ROOT ?? '/var/lib/iqpanel';
 const POLL_MS    = 2_000;
@@ -39,14 +39,25 @@ async function runStreamStep(deploymentId, position, name, cmd, logEmit, action,
         logEmit(text);
       }
     });
+    const code = commandExitCode(result);
+    if (code !== 0) {
+      const err = new Error(`${name} exited ${code}`);
+      err.permanent = true;
+      err.exitCode = code;
+      throw err;
+    }
     finishStep(stepId, { status: 'success', exit_code: 0 });
     return result;
   } catch (e) {
     const msg = `${e.message ?? e}\n`;
-    finishStep(stepId, { status: 'failed', exit_code: 1, extra: msg });
+    finishStep(stepId, { status: 'failed', exit_code: e.exitCode ?? 1, extra: msg });
     logEmit(msg);
     throw e;
   }
+}
+
+function siteExec(site, cmd) {
+  return { slug: site.slug, cmd, php_version: site.php_version };
 }
 
 async function processDeploy(payload, logPath) {
@@ -67,59 +78,75 @@ async function processDeploy(payload, logPath) {
   } catch { isFirstDeploy = true; }
 
   let pos = 0;
-  if (site.repo_url) {
-    if (isFirstDeploy) {
-      const cloned = await runStreamStep(
-        deployment_id, pos++, 'Clone repository',
-        `git clone ${site.repo_url}`, emit,
-        'git.clone', { slug: site.slug, url: site.repo_url, branch: site.deploy_branch ?? 'main' }
-      );
-      if (cloned?.already) isFirstDeploy = false;
-    } else {
-      if (site.type === 'laravel') {
-        try {
-          await runStreamStep(
-            deployment_id, pos++, 'Maintenance on',
-            'php artisan down --retry=60', emit,
-            'exec.run', { slug: site.slug, cmd: 'php artisan down --retry=60' }
-          );
-        } catch {}
+  let maintenance = false;
+  let commitInfo = {};
+  try {
+    if (site.repo_url) {
+      if (isFirstDeploy) {
+        const cloned = await runStreamStep(
+          deployment_id, pos++, 'Clone repository',
+          `git clone ${site.repo_url}`, emit,
+          'git.clone', { slug: site.slug, url: site.repo_url, branch: site.deploy_branch ?? 'main' }
+        );
+        if (cloned?.already) isFirstDeploy = false;
+      } else {
+        if (site.type === 'laravel') {
+          try {
+            await runStreamStep(
+              deployment_id, pos++, 'Maintenance on',
+              'php artisan down --retry=60', emit,
+              'exec.run', siteExec(site, 'php artisan down --retry=60')
+            );
+            maintenance = true;
+          } catch {}
+        }
+        await runStreamStep(
+          deployment_id, pos++, 'Pull latest code',
+          `git pull origin ${site.deploy_branch ?? 'main'}`, emit,
+          'git.pull', { slug: site.slug, branch: site.deploy_branch ?? 'main' }
+        );
+      }
+    }
+
+    commitInfo = await invoke('git.current_commit', { slug: site.slug }).catch(() => ({}));
+    persistDeployCommit(deployment_id, commitInfo);
+
+    const steps = query('SELECT * FROM site_deploy_steps WHERE site_id = ? AND enabled = 1 ORDER BY position', [site_id]);
+    for (const step of steps) {
+      const cmd = normalizeRecipeCmd(step.cmd);
+      if (step.first_only && !isFirstDeploy) {
+        createStep(deployment_id, {
+          position: pos++, name: cmd, cmd, status: 'skipped',
+        });
+        emit(`[${now()}] Skip (first-deploy only): ${cmd}\n`);
+        continue;
       }
       await runStreamStep(
-        deployment_id, pos++, 'Pull latest code',
-        `git pull origin ${site.deploy_branch ?? 'main'}`, emit,
-        'git.pull', { slug: site.slug, branch: site.deploy_branch ?? 'main' }
+        deployment_id, pos++, cmd, cmd, emit,
+        'exec.run', siteExec(site, cmd)
       );
     }
-  }
 
-  const commitInfo = await invoke('git.current_commit', { slug: site.slug }).catch(() => ({}));
-  persistDeployCommit(deployment_id, commitInfo);
-
-  const steps = query('SELECT * FROM site_deploy_steps WHERE site_id = ? AND enabled = 1 ORDER BY position', [site_id]);
-  for (const step of steps) {
-    const cmd = normalizeRecipeCmd(step.cmd);
-    if (step.first_only && !isFirstDeploy) {
-      createStep(deployment_id, {
-        position: pos++, name: cmd, cmd, status: 'skipped',
-      });
-      emit(`[${now()}] Skip (first-deploy only): ${cmd}\n`);
-      continue;
+    if (site.type === 'laravel' && !isFirstDeploy) {
+      try {
+        await runStreamStep(
+          deployment_id, pos++, 'Maintenance off',
+          'php artisan up', emit,
+          'exec.run', siteExec(site, 'php artisan up')
+        );
+      } catch {}
     }
-    await runStreamStep(
-      deployment_id, pos++, cmd, cmd, emit,
-      'exec.run', { slug: site.slug, cmd }
-    );
-  }
-
-  if (site.type === 'laravel' && !isFirstDeploy) {
-    try {
-      await runStreamStep(
-        deployment_id, pos++, 'Maintenance off',
-        'php artisan up', emit,
-        'exec.run', { slug: site.slug, cmd: 'php artisan up' }
-      );
-    } catch {}
+  } catch (e) {
+    if (maintenance) {
+      try {
+        await runStreamStep(
+          deployment_id, pos++, 'Maintenance off',
+          'php artisan up', emit,
+          'exec.run', siteExec(site, 'php artisan up')
+        );
+      } catch {}
+    }
+    throw e;
   }
 
   emit(`[${now()}] Deploy complete (${commitInfo.sha ?? commitInfo.short ?? 'unknown'})\n`);
@@ -158,7 +185,7 @@ async function processRollback(payload, logPath) {
     const cmd = normalizeRecipeCmd(step.cmd);
     await runStreamStep(
       deployment_id, pos++, cmd, cmd, emit,
-      'exec.run', { slug: site.slug, cmd }
+      'exec.run', siteExec(site, cmd)
     );
   }
 
@@ -211,7 +238,7 @@ async function tick() {
   } catch (e) {
     console.error('[worker] job failed', job.id, e.message);
     const attempts = (job.attempts ?? 0) + 1;
-    const failed = attempts >= (job.max_attempts ?? 3);
+    const failed = e?.permanent === true || attempts >= (job.max_attempts ?? 3);
     run(`UPDATE jobs SET status = ?, last_error = ?, updated_at = ? WHERE id = ?`,
       [failed ? 'failed' : 'queued', e.message, nowIso(), job.id]);
     if (payload.deployment_id) {

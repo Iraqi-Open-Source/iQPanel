@@ -14,7 +14,7 @@ process.env.PANEL_SECRET_KEY = 'test-secret-key-for-tests-only-32';
 const { run, get } = await import('../server/data/db.js');
 const {
   normalizeRecipeCmd, createStep, appendStepOutput, finishStep,
-  stepsForDeployment, attachStepSummaries,
+  stepsForDeployment, attachStepSummaries, commandExitCode,
 } = await import('../server/domain/deploy-steps.js');
 
 describe('exec working directory', () => {
@@ -23,6 +23,19 @@ describe('exec working directory', () => {
       buildExecScript('composer install --no-interaction'),
       'composer install --no-interaction'
     );
+  });
+});
+
+describe('command exit codes', () => {
+  test('a composer failure is a failed step, not a successful deploy', () => {
+    assert.equal(commandExitCode({ code: 1 }), 1);
+    assert.equal(commandExitCode({ code: 0 }), 0);
+  });
+
+  test('git and other actions without a code still count as success', () => {
+    assert.equal(commandExitCode({ dest: '/var/www/sites/app' }), 0);
+    assert.equal(commandExitCode('already cloned'), 0);
+    assert.equal(commandExitCode(null), 0);
   });
 });
 

@@ -261,7 +261,7 @@ export function registerDatabases(app) {
         env = setEnvVar(env, 'DB_USERNAME',    creds.dbUser);
         env = setEnvVar(env, 'DB_PASSWORD',    result.dbPass);
         await invoke('exec.env_write', { slug: site.slug, content: env });
-        await invoke('exec.run', { slug: site.slug, cmd: 'php artisan config:clear' });
+        await invoke('exec.run', { slug: site.slug, cmd: 'php artisan config:clear', php_version: site.php_version });
         env_injected = true;
       } catch (e) {
         env_error = e.message;

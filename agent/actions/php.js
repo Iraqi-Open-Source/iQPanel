@@ -4,7 +4,26 @@ import { join } from 'node:path';
 
 const PHP_ROOT = process.env.PANEL_PHP_FPM_ROOT ?? '/etc/php';
 
-const ALLOWED_VERSIONS = ['7.4', '8.0', '8.1', '8.2', '8.3', '8.4', '8.5'];
+export const PHP_VERSIONS = ['7.4', '8.0', '8.1', '8.2', '8.3', '8.4', '8.5'];
+const ALLOWED_VERSIONS = PHP_VERSIONS;
+
+function dpkgStatus(name) {
+  try {
+    return execFileSync('dpkg-query', ['-W', '-f=${Status}', name], { encoding: 'utf8' }).trim();
+  } catch {
+    return '';
+  }
+}
+
+/** True only after apt has fully configured the CLI and FPM packages. */
+export function phpVersionReady(version, probe = {}) {
+  const binExists = probe.binExists ?? ((p) => existsSync(p));
+  const packageStatus = probe.packageStatus ?? dpkgStatus;
+  return binExists(`/usr/bin/php${version}`)
+    && packageStatus(`php${version}-cli`) === 'install ok installed'
+    && packageStatus(`php${version}-fpm`) === 'install ok installed';
+}
+
 const BASE_EXTENSIONS = ['fpm', 'cli', 'mysql', 'pgsql', 'mbstring', 'xml', 'curl', 'gd', 'zip', 'bcmath', 'intl', 'readline', 'tokenizer', 'common'];
 
 function assertVersion(v) {
@@ -53,8 +72,9 @@ export const installedVersions = {
   async run() {
     const versions = {};
     for (const v of ALLOWED_VERSIONS) {
-      const path = join(PHP_ROOT, v, 'fpm');
-      versions[v] = existsSync(path);
+      // /etc/php/X/fpm appears while apt is still unpacking, so the card
+      // must wait until dpkg reports the packages as fully installed.
+      versions[v] = phpVersionReady(v);
     }
     return versions;
   },

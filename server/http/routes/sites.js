@@ -11,6 +11,7 @@ import {
   persistAndApplySiteAccess,
   resolveSiteAccess,
 } from '../../domain/site-access.js';
+import { autoDnsEnabled, removeSiteDns, syncSiteDns } from '../../domain/cloudflare.js';
 
 function uuid()   { return randomBytes(16).toString('hex'); }
 function nowIso() { return new Date().toISOString(); }
@@ -86,7 +87,9 @@ export function registerSites(app) {
       auditLog(req, 'site.create', slug);
 
       // Async provisioning
-      provisionSite(id, slug, type, php_version, webserver, assignedPort, host, repo_url).catch((e) => {
+      provisionSite(id, slug, type, php_version, webserver, assignedPort, host, repo_url, {
+        autoDns: req.body?.auto_dns,
+      }).catch((e) => {
         try { run('UPDATE sites SET status = ? WHERE id = ?', ['error', id]); } catch {}
         console.error('[provision] error', e?.message ?? e);
       });
@@ -210,8 +213,28 @@ export function registerSites(app) {
         updated = get('SELECT * FROM sites WHERE id = ?', [site.id]);
       }
 
+      let dns = null;
+      const domainChanged = (updated.domain ?? null) !== (site.domain ?? null);
+      const wantDns = body.auto_dns !== undefined
+        ? autoDnsEnabled(body.auto_dns)
+        : (domainChanged && autoDnsEnabled(undefined));
+      if (wantDns && updated.domain) {
+        const tracked = get(
+          'SELECT id FROM cloudflare_dns_records WHERE site_id = ? AND record_name = ?',
+          [updated.id, updated.domain],
+        );
+        if (domainChanged || !tracked) {
+          try {
+            dns = await syncSiteDns(updated, updated.domain);
+          } catch (e) {
+            console.error('[cloudflare] dns sync failed', e?.message ?? e);
+            dns = { error: e.message ?? 'DNS update failed' };
+          }
+        }
+      }
+
       auditLog(req, 'site.update', site.slug);
-      res.json(updated);
+      res.json(dns ? { ...updated, dns } : updated);
     } catch (e) {
       console.error('[sites.patch]', e);
       res.status(e.status ?? 500).json({ error: e.message ?? 'Failed to update site' });
@@ -237,9 +260,20 @@ export function registerSites(app) {
     try { await invoke('php.remove_pool',        { slug: site.slug, version: site.php_version }); } catch {}
     try { await invoke('users.remove_site_user', { slug: site.slug }); } catch {}
 
+    const cleanupDns = req.query.cleanup_dns === 'true' || req.query.cleanup_dns === '1' || req.body?.cleanup_dns === true;
+    let dns = null;
+    if (cleanupDns) {
+      try {
+        dns = await removeSiteDns(site.id);
+      } catch (e) {
+        console.error('[cloudflare] dns cleanup failed', e?.message ?? e);
+        dns = { error: e.message ?? 'DNS cleanup failed' };
+      }
+    }
+
     run('DELETE FROM sites WHERE id = ?', [site.id]);
     auditLog(req, 'site.delete', site.slug);
-    res.json({ ok: true });
+    res.json({ ok: true, ...(dns ? { dns } : {}) });
   });
 }
 
@@ -258,7 +292,7 @@ function githubDeepLink(repoUrl, _key) {
   return null;
 }
 
-async function provisionSite(id, slug, type, phpVersion, webserver, port, domain, _repoUrl) {
+async function provisionSite(id, slug, type, phpVersion, webserver, port, domain, _repoUrl, { autoDns } = {}) {
   await invoke('users.create_site_user', { slug });
 
   const siteUser = siteUserName(slug);
@@ -271,4 +305,13 @@ async function provisionSite(id, slug, type, phpVersion, webserver, port, domain
   const keyResult = await invoke('git.keygen', { slug });
   run('UPDATE sites SET deploy_key_pub = ?, status = ?, updated_at = ? WHERE id = ?',
     [keyResult.publicKey, 'online', nowIso(), id]);
+
+  if (domain && autoDnsEnabled(autoDns)) {
+    try {
+      const ready = get('SELECT * FROM sites WHERE id = ?', [id]);
+      await syncSiteDns(ready, domain);
+    } catch (e) {
+      console.error('[cloudflare] auto dns failed', e?.message ?? e);
+    }
+  }
 }

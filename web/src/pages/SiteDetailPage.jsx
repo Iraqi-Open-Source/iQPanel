@@ -14,6 +14,7 @@ import DangerConfirmDialog from '../components/DangerConfirmDialog.jsx';
 import SiteAccessFields, {
   accessPayload, installedPhpVersions, validateAccess,
 } from '../components/SiteAccessFields.jsx';
+import SiteDnsPanel from '../components/SiteDnsPanel.jsx';
 import DeployRecipeEditor, { normalizeRecipeSteps, toApiSteps } from '../components/DeployRecipeEditor.jsx';
 import {
   Play, RefreshCw, ArrowLeft, Copy, FileText,
@@ -404,7 +405,9 @@ function SettingsTab({ site }) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const [cleanupDns, setCleanupDns] = useState(false);
   const [reauthOpen, setReauthOpen] = useState(false);
+  const [cfAccess, setCfAccess] = useState({ configured: false, autoDns: true, subdomainMode: false, subdomain: '', zoneId: '' });
 
   useEffect(() => {
     setName(site.name);
@@ -421,7 +424,7 @@ function SettingsTab({ site }) {
   async function save() {
     const trimmed = String(name).trim();
     if (!trimmed) { setError('Name is required'); return; }
-    const accessError = validateAccess({ usePort, domain, port: listenPort });
+    const accessError = validateAccess({ usePort, domain, port: listenPort, ...cfAccess });
     if (accessError) { setError(accessError); return; }
     if (showPhp && !phpOptions.length) { setError('Install a PHP version first'); return; }
     setSaving(true); setError(''); setSaved(false);
@@ -429,9 +432,11 @@ function SettingsTab({ site }) {
       await api.patch(`/api/sites/${site.slug}`, {
         name: trimmed,
         ...accessPayload({ phpVersion, usePort, domain, port: listenPort }),
+        ...(cfAccess.configured && !usePort ? { auto_dns: cfAccess.autoDns } : {}),
       });
       qc.invalidateQueries(['site', site.slug]);
       qc.invalidateQueries(['sites']);
+      qc.invalidateQueries(['cloudflare-site', site.slug]);
       setSaved(true);
     } catch (e) {
       setError(e.message);
@@ -444,7 +449,8 @@ function SettingsTab({ site }) {
     setDeleting(true);
     setDeleteError('');
     try {
-      await api.delete(`/api/sites/${site.slug}`);
+      const cleanup = cleanupDns ? '?cleanup_dns=true' : '';
+      await api.delete(`/api/sites/${site.slug}${cleanup}`);
       qc.invalidateQueries(['sites']);
       setDeleteOpen(false);
       navigate('/sites');
@@ -460,7 +466,7 @@ function SettingsTab({ site }) {
   }
 
   return (
-    <div className="space-y-4 max-w-xl">
+    <div className="max-w-3xl space-y-4">
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Site settings</CardTitle>
@@ -491,12 +497,15 @@ function SettingsTab({ site }) {
             port={listenPort}
             onPort={setListenPort}
             sslWarning={domainChanging}
+            onCloudflareChange={setCfAccess}
           />
           {error && <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>}
           {saved && !error && <p className="text-sm text-green-600">Settings saved.</p>}
           <Button onClick={save} loading={saving}>Save</Button>
         </CardContent>
       </Card>
+
+      <SiteDnsPanel site={site} />
 
       <Card className="border-red-600/60">
         <CardHeader>
@@ -507,6 +516,10 @@ function SettingsTab({ site }) {
         </CardHeader>
         <CardContent className="space-y-3">
           {deleteError && <p className="text-sm text-destructive" role="alert">{deleteError}</p>}
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={cleanupDns} onChange={(e) => setCleanupDns(e.target.checked)} />
+            Also remove Cloudflare DNS records created for this site
+          </label>
           <Button variant="destructive" onClick={() => { setDeleteError(''); setDeleteOpen(true); }}>
             <Trash2 className="h-3.5 w-3.5" /> Delete site
           </Button>

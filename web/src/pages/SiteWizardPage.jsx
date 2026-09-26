@@ -38,6 +38,7 @@ export default function SiteWizardPage() {
   const [domain,     setDomain]     = useState('');
   const [usePort,    setUsePort]    = useState(false);
   const [listenPort, setListenPort] = useState('');
+  const [cfAccess,   setCfAccess]   = useState({ configured: false, autoDns: true, subdomainMode: false, subdomain: '', zoneId: '' });
   const [phpVersion, setPhpVersion] = useState('8.3');
   const [phpInstalled, setPhpInstalled] = useState({});
   const [deploySteps, setDeploySteps] = useState(() => normalizeRecipeSteps(DEFAULT_LARAVEL_RECIPE));
@@ -73,9 +74,10 @@ export default function SiteWizardPage() {
     setLoading(true); setError('');
     try {
       const access = accessPayload({ phpVersion, usePort, domain, port: listenPort });
+      const dns = cfAccess.configured && !usePort ? { auto_dns: cfAccess.autoDns } : {};
       const s = site
-        ? await api.patch(`/api/sites/${site.slug}`, access)
-        : await api.post('/api/sites', { name, type, repo_url: repoUrl, ...access });
+        ? await api.patch(`/api/sites/${site.slug}`, { ...access, ...dns })
+        : await api.post('/api/sites', { name, type, repo_url: repoUrl, ...access, ...dns });
       setSite(s);
     } catch (e) {
       setError(e.message);
@@ -119,7 +121,7 @@ export default function SiteWizardPage() {
       if (showPhp && !phpOptions.length) { setError('Install a PHP version before creating this site'); return; }
     }
     if (step === 2) {
-      const accessError = validateAccess({ usePort, domain, port: listenPort });
+      const accessError = validateAccess({ usePort, domain, port: listenPort, ...cfAccess });
       if (accessError) { setError(accessError); return; }
       const ok = await createSite();
       if (!ok) return;
@@ -224,6 +226,7 @@ export default function SiteWizardPage() {
               onDomain={setDomain}
               port={listenPort}
               onPort={setListenPort}
+              onCloudflareChange={setCfAccess}
             />
           )}
 

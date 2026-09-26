@@ -20,6 +20,7 @@ const CronPage         = lazy(() => import('./pages/CronPage.jsx'));
 const PackagesPage     = lazy(() => import('./pages/PackagesPage.jsx'));
 const UsersPage        = lazy(() => import('./pages/UsersPage.jsx'));
 const SettingsPage     = lazy(() => import('./pages/SettingsPage.jsx'));
+const CloudflarePage   = lazy(() => import('./pages/CloudflarePage.jsx'));
 const AuditPage        = lazy(() => import('./pages/AuditPage.jsx'));
 
 function RequireAuth({ children }) {
@@ -38,6 +39,7 @@ export default function App() {
           <Route path="/" element={<RequireAuth><Layout /></RequireAuth>}>
             <Route index element={<Dashboard />} />
             <Route path="sites" element={<SitesPage />} />
+            <Route path="cloudflare" element={<CloudflarePage />} />
             <Route path="sites/new" element={<SiteWizardPage />} />
             <Route path="sites/:slug" element={<SiteDetailPage />} />
             <Route path="sites/:slug/:tab" element={<SiteDetailPage />} />

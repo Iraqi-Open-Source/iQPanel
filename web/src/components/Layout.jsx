@@ -6,7 +6,7 @@ import { useAuth } from '../lib/auth-context.jsx';
 import { api } from '../lib/api.js';
 import {
   Server, Globe, Database, Shield, Package, Clock, ScrollText,
-  Settings, Users, FileText, Container, Code2,
+  Settings, Users, FileText, Container, Code2, Cloud,
   Moon, Sun, Monitor, LogOut, Activity, ChevronDown,
 } from 'lucide-react';
 import { cn } from '../lib/utils.js';
@@ -16,6 +16,7 @@ import ServiceStatusChips from './ServiceStatus.jsx';
 const NAV = [
   { to: '/',          icon: Activity,    label: 'Dashboard' },
   { to: '/sites',     icon: Globe,       label: 'Sites' },
+  { to: '/cloudflare', icon: Cloud,      label: 'Cloudflare' },
   { to: '/services',  icon: Server,      label: 'Services' },
   { to: '/php',       icon: Code2,       label: 'PHP' },
   { to: '/databases', icon: Database,    label: 'Databases' },

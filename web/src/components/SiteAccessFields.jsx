@@ -1,5 +1,8 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { api } from '../lib/api.js';
+import { cn } from '../lib/utils.js';
 import Input from './ui/Input.jsx';
 
 const SELECT_CLASS =
@@ -26,7 +29,55 @@ export default function SiteAccessFields({
   port,
   onPort,
   sslWarning = false,
+  onCloudflareChange,
 }) {
+  const { data: cloudflare } = useQuery({
+    queryKey: ['cloudflare-zones'],
+    queryFn: () => api.get('/api/cloudflare/zones'),
+    enabled: showAccess,
+    staleTime: 60_000,
+    retry: false,
+  });
+  const configured = Boolean(cloudflare?.configured);
+  const zones = cloudflare?.zones ?? [];
+  const [subdomainMode, setSubdomainMode] = useState(false);
+  const [zoneId, setZoneId] = useState('');
+  const [subdomain, setSubdomain] = useState('');
+  const [autoDns, setAutoDns] = useState(true);
+
+  useEffect(() => {
+    if (!zoneId && zones[0]) setZoneId(zones[0].id);
+  }, [zoneId, zones]);
+
+  const onCloudflareChangeRef = useRef(onCloudflareChange);
+  onCloudflareChangeRef.current = onCloudflareChange;
+  useEffect(() => {
+    onCloudflareChangeRef.current?.({
+      configured,
+      autoDns,
+      subdomainMode,
+      subdomain,
+      zoneId,
+    });
+  }, [configured, autoDns, subdomainMode, subdomain, zoneId]);
+
+  function compose(prefix, nextZoneId) {
+    const zone = zones.find((z) => z.id === nextZoneId);
+    const label = String(prefix ?? '').trim().toLowerCase();
+    if (!zone || !label) {
+      onDomain('');
+      return;
+    }
+    onDomain(`${label}.${zone.name}`);
+  }
+
+  function enableSubdomain(enabled) {
+    const id = zoneId || zones[0]?.id || '';
+    if (id && id !== zoneId) setZoneId(id);
+    setSubdomainMode(enabled);
+    if (enabled) compose(subdomain, id);
+  }
+
   return (
     <div className="space-y-4">
       {showPhp && (
@@ -74,10 +125,67 @@ export default function SiteAccessFields({
           </div>
 
           {!usePort ? (
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium">Domain</label>
-              <Input placeholder="myapp.example.com" value={domain} onChange={(e) => onDomain(e.target.value)} />
-              <p className="text-xs text-muted-foreground">Point your DNS A record to this server before issuing SSL.</p>
+            <div className="space-y-3">
+              {configured && zones.length > 0 && (
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={subdomainMode}
+                    onChange={(e) => enableSubdomain(e.target.checked)}
+                  />
+                  Create subdomain on Cloudflare
+                </label>
+              )}
+              {configured && subdomainMode ? (
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Subdomain</label>
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="app"
+                      value={subdomain}
+                      onChange={(e) => {
+                        setSubdomain(e.target.value);
+                        compose(e.target.value, zoneId);
+                      }}
+                    />
+                    <select
+                      className={cn(SELECT_CLASS, 'w-auto shrink-0')}
+                      value={zoneId}
+                      onChange={(e) => {
+                        setZoneId(e.target.value);
+                        compose(subdomain, e.target.value);
+                      }}
+                    >
+                      {zones.map((zone) => (
+                        <option key={zone.id} value={zone.id}>.{zone.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {domain ? <>Site domain: <span className="font-medium text-foreground">{domain}</span></> : 'Enter a subdomain label.'}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Domain</label>
+                  <Input placeholder="myapp.example.com" value={domain} onChange={(e) => onDomain(e.target.value)} />
+                  <p className="text-xs text-muted-foreground">
+                    {configured
+                      ? 'Use a hostname on a Cloudflare zone, or create a subdomain above.'
+                      : 'Point your DNS A record to this server before issuing SSL.'}
+                  </p>
+                </div>
+              )}
+              {configured && (
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={autoDns}
+                    onChange={(e) => setAutoDns(e.target.checked)}
+                  />
+                  Auto-create DNS record pointing at this server
+                </label>
+              )}
             </div>
           ) : (
             <div className="space-y-1.5">
@@ -115,8 +223,10 @@ export function accessPayload({ phpVersion, usePort, domain, port }) {
   };
 }
 
-export function validateAccess({ usePort, domain, port }) {
+export function validateAccess({ usePort, domain, port, subdomainMode = false, subdomain = '', zoneId = '' }) {
   if (!usePort) {
+    if (subdomainMode && !zoneId) return 'Select a Cloudflare zone';
+    if (subdomainMode && !String(subdomain ?? '').trim()) return 'Subdomain required';
     if (!String(domain ?? '').trim()) return 'Domain required';
     return null;
   }
